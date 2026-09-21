@@ -1,0 +1,34 @@
+# Google OAuth credentials and tokens
+credentials.json
+**/credentials.json
+token.json
+**/token.json
+*.env
+.env*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Output artifacts (keep sample if committed, but ignore local run outputs)
+output/*.tmp
+output/*.temp

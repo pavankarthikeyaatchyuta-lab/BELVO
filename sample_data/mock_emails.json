@@ -1,0 +1,65 @@
+[
+  {
+    "id": "msg_001",
+    "sender": "Pavan Atchyuta <pavan@example.com>",
+    "subject": "Daily Work Report - 2026-09-17",
+    "received_at": "2026-09-17T18:00:00+00:00",
+    "snippet": "Completed task modules and updated test suite."
+  },
+  {
+    "id": "msg_002",
+    "sender": "pavan@example.com",
+    "subject": "Daily Work Report - 2026-09-17",
+    "received_at": "2026-09-17T18:10:00+00:00",
+    "snippet": "Updated notes on final deployment."
+  },
+  {
+    "id": "msg_003",
+    "sender": "Thrija <thrija@example.com>",
+    "subject": "Daily Work Report: 2026-09-17",
+    "received_at": "2026-09-17T19:30:00+00:00",
+    "snippet": "Designed UI components and reviewed API endpoints."
+  },
+  {
+    "id": "msg_004",
+    "sender": "sai@example.com",
+    "subject": "  daily work report - 2026-09-17  ",
+    "received_at": "2026-09-18T01:15:00+00:00",
+    "snippet": "Submitted late night report: debugged database queries."
+  },
+  {
+    "id": "msg_005",
+    "sender": "Ravi <ravi@example.com>",
+    "subject": "Hello team",
+    "received_at": "2026-09-17T17:45:00+00:00",
+    "snippet": "Hey everyone, checking in on the sync today."
+  },
+  {
+    "id": "msg_006",
+    "sender": "ravi@example.com",
+    "subject": "",
+    "received_at": "2026-09-17T17:50:00+00:00",
+    "snippet": "Work report without subject."
+  },
+  {
+    "id": "msg_007",
+    "sender": "Ananya <ananya@example.com>",
+    "subject": "Daily Work Report - 2026-09-17",
+    "received_at": "2026-09-17T16:00:00+00:00",
+    "snippet": "Work completed before taking scheduled half-day leave."
+  },
+  {
+    "id": "msg_008",
+    "sender": "Unknown Contractor <external_contractor@partner.com>",
+    "subject": "Daily Work Report - 2026-09-17",
+    "received_at": "2026-09-17T18:30:00+00:00",
+    "snippet": "Submitted consultant deliverables."
+  },
+  {
+    "id": "msg_009",
+    "sender": "Pavan Atchyuta <pavan@example.com>",
+    "subject": "Daily Work Report - 2026-09-16",
+    "received_at": "2026-09-16T18:00:00+00:00",
+    "snippet": "Yesterday report, should not count for 2026-09-17."
+  }
+]
