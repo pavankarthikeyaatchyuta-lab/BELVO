@@ -112,6 +112,17 @@ def launch_ui():
     subprocess.run([sys.executable, "-m", "streamlit", "run", str(ui_script)])
 
 
+def launch_server(host: str = "127.0.0.1", port: int = 8000):
+    """Launches the FastAPI backend server for the Chrome Extension."""
+    import uvicorn
+    print(f"==================================================")
+    print(f"  Belvo Attendance Tracker - API Server")
+    print(f"  Serving at http://{host}:{port}")
+    print(f"  Chrome Extension Endpoint: http://{host}:{port}/api/status")
+    print(f"==================================================")
+    uvicorn.run("app.api:app", host=host, port=port, reload=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Belvo Attendance Tracker")
     parser.add_argument(
@@ -156,11 +167,25 @@ def main():
         action="store_true",
         help="Launch the interactive Streamlit web dashboard",
     )
+    parser.add_argument(
+        "--server",
+        "--api",
+        action="store_true",
+        help="Launch the FastAPI backend server for the Chrome Extension",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for the API server (default: 8000)",
+    )
 
     args = parser.parse_args()
 
     if args.ui:
         launch_ui()
+    elif args.server:
+        launch_server(port=args.port)
     else:
         run_pipeline(
             target_date=args.date,
@@ -174,3 +199,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

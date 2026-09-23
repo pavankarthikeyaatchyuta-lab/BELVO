@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Belvo Attendance Tracker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="header-icon">📅</div>
+        <div>
+          <h1 class="header-title">Belvo Attendance</h1>
+          <p class="header-subtitle">Gmail Work Report Automation</p>
+        </div>
+      </div>
+      <div id="connection-status" class="status-badge status-offline">
+        <span class="status-dot"></span>
+        <span id="connection-text">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Configuration Card -->
+    <section class="card config-card">
+      <div class="form-group">
+        <label for="mode-select">Data Source Mode</label>
+        <select id="mode-select" class="form-control">
+          <option value="mock" selected>Mock Mode (Safe / Offline Demo)</option>
+          <option value="gmail">Gmail API (Real Mailbox)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="target-date">Attendance Date</label>
+        <input type="date" id="target-date" class="form-control" value="2026-09-17">
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="button-group">
+        <button id="btn-scan" class="btn btn-secondary">
+          🔍 Scan Inbox
+        </button>
+        <button id="btn-process" class="btn btn-primary">
+          ⚙️ Process Attendance
+        </button>
+      </div>
+
+      <div id="gmail-auth-row" class="auth-row hidden">
+        <button id="btn-connect" class="btn btn-outline btn-sm">
+          🔑 Test / Connect Gmail OAuth
+        </button>
+        <span id="auth-status-text" class="auth-status-hint"></span>
+      </div>
+    </section>
+
+    <!-- KPI Metric Cards -->
+    <section class="card metrics-card">
+      <div class="metrics-grid">
+        <div class="metric-box">
+          <span class="metric-label">Expected</span>
+          <span id="metric-total" class="metric-value">-</span>
+        </div>
+        <div class="metric-box metric-p">
+          <span class="metric-label">Present (P)</span>
+          <span id="metric-p" class="metric-value">-</span>
+        </div>
+        <div class="metric-box metric-a">
+          <span class="metric-label">Absent (A)</span>
+          <span id="metric-a" class="metric-value">-</span>
+        </div>
+        <div class="metric-box metric-l">
+          <span class="metric-label">Leave (L)</span>
+          <span id="metric-l" class="metric-value">-</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results Table Preview -->
+    <section id="results-card" class="card results-card hidden">
+      <div class="results-header">
+        <h3 class="section-title">Attendance Roster</h3>
+        <span id="scan-summary-badge" class="badge"></span>
+      </div>
+      <div class="table-container">
+        <table class="roster-table">
+          <thead>
+            <tr>
+              <th>Person</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="roster-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="card download-card">
+      <button id="btn-download" class="btn btn-success" disabled>
+        📥 Download attendance.xlsx
+      </button>
+    </section>
+
+    <!-- Status / Notification Console -->
+    <footer class="app-footer">
+      <div id="status-console" class="status-console">
+        Ready. Ensure backend is running (`python main.py --server`).
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
