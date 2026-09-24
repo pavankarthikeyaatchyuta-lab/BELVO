@@ -9,7 +9,7 @@ import io
 import os
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import FastAPI, Header, HTTPException, Query, Response, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
@@ -78,7 +78,27 @@ def extract_bearer_token(auth_header: Optional[str], body_token: Optional[str]) 
     return None
 
 
+@app.get("/")
+def root_status():
+    """Root health check for Vercel deployment."""
+    return {
+        "status": "online",
+        "service": "Belvo Attendance Tracker API",
+        "version": "2.0.0",
+        "message": "Belvo Attendance Tracker API is operational.",
+        "endpoints": {
+            "status": "/api/status",
+            "docs": "/docs",
+            "scan": "/api/scan",
+            "process": "/api/process",
+            "download": "/api/download",
+            "auth": "/api/auth/google",
+        },
+    }
+
+
 @app.get("/api/status")
+@app.get("/status")
 def get_system_status():
     """Returns backend health, credentials presence, and active configuration."""
     client_id, _, _ = get_oauth_config()
@@ -107,6 +127,7 @@ def get_system_status():
 # ==========================================================
 
 @app.get("/api/auth/google")
+@app.get("/auth/google")
 def initiate_google_oauth(
     redirect_uri: Optional[str] = Query(None, description="Custom OAuth redirect URI"),
     json_response: bool = Query(False, description="Return JSON instead of redirect"),
@@ -129,6 +150,7 @@ def initiate_google_oauth(
 
 
 @app.get("/api/auth/callback")
+@app.get("/auth/callback")
 def google_oauth_callback(
     code: Optional[str] = Query(None, description="Google authorization code"),
     state: Optional[str] = Query(None, description="CSRF state parameter"),
@@ -231,6 +253,7 @@ def google_oauth_callback(
 
 
 @app.get("/api/auth/status")
+@app.get("/auth/status")
 def get_auth_status(
     authorization: Optional[str] = Header(None),
     token: Optional[str] = Query(None),
@@ -253,6 +276,7 @@ def get_auth_status(
 
 
 @app.post("/api/auth/logout")
+@app.post("/auth/logout")
 def logout():
     """Logs out by clearing active session cookies."""
     response = Response(content='{"authenticated": false, "message": "Logged out successfully."}', media_type="application/json")
@@ -261,6 +285,7 @@ def logout():
 
 
 @app.post("/api/auth/connect")
+@app.post("/auth/connect")
 def connect_gmail_legacy():
     """Validates local or web OAuth setup for backward compatibility."""
     client_id, _, _ = get_oauth_config()
@@ -300,6 +325,7 @@ def connect_gmail_legacy():
 # ==========================================================
 
 @app.post("/api/scan")
+@app.post("/scan")
 def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(None)):
     """
     Scans Gmail (or mock store) for work reports matching the target date.
@@ -368,6 +394,7 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
 
 
 @app.post("/api/process")
+@app.post("/process")
 def process_attendance(req: ProcessRequest, authorization: Optional[str] = Header(None)):
     """
     Executes the deterministic attendance engine, generates Excel, and returns results.
@@ -469,6 +496,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
 
 
 @app.get("/api/download")
+@app.get("/download")
 def download_excel():
     """Serves the generated attendance.xlsx workbook."""
     global _latest_excel_bytes

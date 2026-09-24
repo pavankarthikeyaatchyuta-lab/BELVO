@@ -22,6 +22,7 @@ from app.config import (
 )
 from app.excel_writer import export_attendance_workbook
 from app.gmail_client import GmailProvider, MockEmailProvider
+from app.api import app
 
 
 def run_pipeline(
