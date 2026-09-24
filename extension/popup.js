@@ -4,9 +4,10 @@
  * Implements Web OAuth 2.0 flow with session token caching.
  */
 
-// Default local and cloud fallbacks
+// Default cloud and local fallbacks
+const DEFAULT_CLOUD_URL = "https://belvo-attendence-tracker.vercel.app";
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:8000";
-let apiBaseUrl = DEFAULT_LOCAL_URL;
+let apiBaseUrl = DEFAULT_CLOUD_URL;
 let sessionToken = null;
 
 // DOM Elements
@@ -376,7 +377,7 @@ window.addEventListener("message", async (event) => {
 // Initialize on load
 document.addEventListener("DOMContentLoaded", async () => {
   // Load saved API URL or default
-  apiBaseUrl = await getStoredValue("belvo_api_url", DEFAULT_LOCAL_URL);
+  apiBaseUrl = await getStoredValue("belvo_api_url", DEFAULT_CLOUD_URL);
   inputApiUrl.value = apiBaseUrl;
 
   // Load saved session token
