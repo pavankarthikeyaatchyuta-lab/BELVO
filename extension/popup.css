@@ -372,6 +372,55 @@ body {
   color: #a7f3d0;
 }
 
+.endpoint-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-text:hover {
+  color: var(--primary);
+}
+
+.settings-panel {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.settings-panel label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.url-input-group {
+  display: flex;
+  gap: 6px;
+}
+
+.form-control-sm {
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
 .hidden {
   display: none !important;
 }
+

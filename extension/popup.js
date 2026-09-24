@@ -1,9 +1,13 @@
 /**
  * Belvo Attendance Tracker - Extension Popup Logic
- * Communicates with the local FastAPI backend (http://127.0.0.1:8000).
+ * Supports both Vercel Cloud Backend (HTTPS) and Local FastAPI Backend (http://127.0.0.1:8000).
+ * Implements Web OAuth 2.0 flow with session token caching.
  */
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+// Default local and cloud fallbacks
+const DEFAULT_LOCAL_URL = "http://127.0.0.1:8000";
+let apiBaseUrl = DEFAULT_LOCAL_URL;
+let sessionToken = null;
 
 // DOM Elements
 const connectionBadge = document.getElementById("connection-status");
@@ -13,6 +17,7 @@ const targetDateInput = document.getElementById("target-date");
 const btnScan = document.getElementById("btn-scan");
 const btnProcess = document.getElementById("btn-process");
 const btnConnect = document.getElementById("btn-connect");
+const btnLogout = document.getElementById("btn-logout");
 const btnDownload = document.getElementById("btn-download");
 const gmailAuthRow = document.getElementById("gmail-auth-row");
 const authStatusText = document.getElementById("auth-status-text");
@@ -26,6 +31,11 @@ const metricL = document.getElementById("metric-l");
 const resultsCard = document.getElementById("results-card");
 const rosterTbody = document.getElementById("roster-tbody");
 const scanSummaryBadge = document.getElementById("scan-summary-badge");
+
+const btnToggleSettings = document.getElementById("btn-toggle-settings");
+const settingsPanel = document.getElementById("settings-panel");
+const inputApiUrl = document.getElementById("input-api-url");
+const btnSaveUrl = document.getElementById("btn-save-url");
 
 // Helpers
 function logStatus(message, type = "normal") {
@@ -45,30 +55,92 @@ function setConnectionState(isOnline, info = "") {
   } else {
     connectionBadge.className = "status-badge status-offline";
     connectionText.textContent = "Backend Offline";
-    logStatus("Backend not detected at http://127.0.0.1:8000.\nRun `python main.py --server` to start it.", "error");
+    logStatus(`Backend not reachable at ${apiBaseUrl}.\nCheck settings or run \`python main.py --server\` if local.`, "error");
   }
+}
+
+// Storage helpers (Chrome extension storage with localStorage fallback)
+async function getStoredValue(key, fallback = null) {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([key], (result) => {
+        resolve(result[key] !== undefined ? result[key] : fallback);
+      });
+    });
+  }
+  const val = localStorage.getItem(key);
+  return val !== null ? val : fallback;
+}
+
+async function setStoredValue(key, value) {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [key]: value }, resolve);
+    });
+  }
+  localStorage.setItem(key, value);
+}
+
+async function removeStoredValue(key) {
+  if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.remove([key], resolve);
+    });
+  }
+  localStorage.removeItem(key);
 }
 
 // 1. Health Check & Status
 async function checkBackendStatus() {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/status`);
+    const headers = {};
+    if (sessionToken) {
+      headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+
+    const res = await fetch(`${apiBaseUrl}/api/status`, { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     setConnectionState(true);
 
-    if (data.credentials_present) {
-      authStatusText.textContent = "✅ credentials.json found";
-    } else {
-      authStatusText.textContent = "⚠️ credentials.json not found";
-    }
-
     if (data.excel_available) {
       btnDownload.disabled = false;
     }
+
+    await checkAuthStatus();
   } catch (err) {
     setConnectionState(false);
   }
+}
+
+// Check Gmail OAuth connection status
+async function checkAuthStatus() {
+  try {
+    const headers = {};
+    if (sessionToken) {
+      headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+
+    const res = await fetch(`${apiBaseUrl}/api/auth/status`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.authenticated) {
+        authStatusText.textContent = "✅ Gmail Connected";
+        authStatusText.style.color = "#155724";
+        btnConnect.classList.add("hidden");
+        btnLogout.classList.remove("hidden");
+        return true;
+      }
+    }
+  } catch (e) {
+    // Ignore error
+  }
+
+  authStatusText.textContent = "⚠️ Not connected";
+  authStatusText.style.color = "#6b7280";
+  btnConnect.classList.remove("hidden");
+  btnLogout.classList.add("hidden");
+  return false;
 }
 
 // 2. Mode Change
@@ -76,29 +148,59 @@ modeSelect.addEventListener("change", () => {
   const isGmail = modeSelect.value === "gmail";
   if (isGmail) {
     gmailAuthRow.classList.remove("hidden");
+    checkAuthStatus();
   } else {
     gmailAuthRow.classList.add("hidden");
   }
   logStatus(`Mode switched to: ${isGmail ? "Gmail API" : "Mock Mode"}`);
 });
 
-// 3. Connect / Verify Gmail Auth
+// 3. Connect with Google OAuth (Web flow)
 btnConnect.addEventListener("click", async () => {
-  logStatus("Verifying Gmail OAuth credentials...");
+  logStatus("Opening Google OAuth consent screen...");
   try {
-    const res = await fetch(`${API_BASE_URL}/api/auth/connect`, {
-      method: "POST",
-    });
+    const res = await fetch(`${apiBaseUrl}/api/auth/google?json_response=true`);
     const data = await res.json();
-    if (res.ok && data.authenticated) {
-      logStatus("Gmail connected successfully!", "success");
-      authStatusText.textContent = "✅ Connected to Gmail";
-    } else {
-      logStatus(`Gmail Auth: ${data.detail || data.message || "Failed"}`, "error");
+
+    if (!res.ok || !data.auth_url) {
+      throw new Error(data.detail || "Failed to generate authorization URL");
     }
+
+    // Open Google OAuth consent page
+    if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+      chrome.tabs.create({ url: data.auth_url });
+    } else {
+      window.open(data.auth_url, "_blank");
+    }
+
+    logStatus("Authorizing in browser... Return here once completed.", "normal");
+
+    // Poll for authentication status for 45 seconds
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      const isAuthed = await checkAuthStatus();
+      if (isAuthed) {
+        clearInterval(interval);
+        logStatus("✅ Gmail connected successfully!", "success");
+      } else if (attempts > 30) {
+        clearInterval(interval);
+      }
+    }, 1500);
   } catch (err) {
-    logStatus(`Error connecting to Gmail: ${err.message}`, "error");
+    logStatus(`OAuth error: ${err.message}`, "error");
   }
+});
+
+// Logout / Disconnect
+btnLogout.addEventListener("click", async () => {
+  sessionToken = null;
+  await removeStoredValue("belvo_session_token");
+  try {
+    await fetch(`${apiBaseUrl}/api/auth/logout`, { method: "POST" });
+  } catch (e) {}
+  await checkAuthStatus();
+  logStatus("Disconnected from Gmail.", "normal");
 });
 
 // 4. Scan Inbox
@@ -114,10 +216,15 @@ btnScan.addEventListener("click", async () => {
   logStatus(`Scanning ${mode.toUpperCase()} for ${date}...`);
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/scan`, {
+    const headers = { "Content-Type": "application/json" };
+    if (sessionToken) {
+      headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+
+    const res = await fetch(`${apiBaseUrl}/api/scan`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, mode }),
+      headers,
+      body: JSON.stringify({ date, mode, session_token: sessionToken }),
     });
 
     const data = await res.json();
@@ -147,10 +254,15 @@ btnProcess.addEventListener("click", async () => {
   logStatus(`Processing attendance for ${date} via ${mode.toUpperCase()}...`);
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/process`, {
+    const headers = { "Content-Type": "application/json" };
+    if (sessionToken) {
+      headers["Authorization"] = `Bearer ${sessionToken}`;
+    }
+
+    const res = await fetch(`${apiBaseUrl}/api/process`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, mode }),
+      headers,
+      body: JSON.stringify({ date, mode, session_token: sessionToken }),
     });
 
     const data = await res.json();
@@ -206,10 +318,9 @@ btnProcess.addEventListener("click", async () => {
 // 6. Download Excel
 btnDownload.addEventListener("click", async () => {
   logStatus("Downloading attendance.xlsx...");
-  const downloadUrl = `${API_BASE_URL}/api/download`;
+  const downloadUrl = `${apiBaseUrl}/api/download`;
 
   try {
-    // Check if chrome.downloads is available
     if (typeof chrome !== "undefined" && chrome.downloads && chrome.downloads.download) {
       chrome.downloads.download({
         url: downloadUrl,
@@ -218,7 +329,6 @@ btnDownload.addEventListener("click", async () => {
       });
       logStatus("File download initiated via Chrome Downloads API.", "success");
     } else {
-      // Fallback standard browser blob download
       const res = await fetch(downloadUrl);
       if (!res.ok) throw new Error("Failed to fetch file from backend");
       const blob = await res.blob();
@@ -237,7 +347,40 @@ btnDownload.addEventListener("click", async () => {
   }
 });
 
-// Initialize on load
-document.addEventListener("DOMContentLoaded", () => {
+// 7. Settings / Custom Backend URL
+btnToggleSettings.addEventListener("click", () => {
+  settingsPanel.classList.toggle("hidden");
+});
+
+btnSaveUrl.addEventListener("click", async () => {
+  const newUrl = inputApiUrl.value.trim().replace(/\/+$/, "");
+  if (!newUrl) return;
+
+  apiBaseUrl = newUrl;
+  await setStoredValue("belvo_api_url", newUrl);
+  settingsPanel.classList.add("hidden");
+  logStatus(`Backend URL saved: ${apiBaseUrl}`);
   checkBackendStatus();
+});
+
+// Listen for postMessage from OAuth callback tab
+window.addEventListener("message", async (event) => {
+  if (event.data && event.data.type === "BELVO_AUTH_SUCCESS" && event.data.session_token) {
+    sessionToken = event.data.session_token;
+    await setStoredValue("belvo_session_token", sessionToken);
+    await checkAuthStatus();
+    logStatus("✅ Gmail connected successfully via OAuth callback!", "success");
+  }
+});
+
+// Initialize on load
+document.addEventListener("DOMContentLoaded", async () => {
+  // Load saved API URL or default
+  apiBaseUrl = await getStoredValue("belvo_api_url", DEFAULT_LOCAL_URL);
+  inputApiUrl.value = apiBaseUrl;
+
+  // Load saved session token
+  sessionToken = await getStoredValue("belvo_session_token", null);
+
+  await checkBackendStatus();
 });

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Email provider interfaces and implementations for Gmail API and Mock testing.
 """
@@ -75,10 +77,12 @@ class GmailProvider(EmailProvider):
         credentials_path: Path = GMAIL_CREDENTIALS_PATH,
         token_path: Path = GMAIL_TOKEN_PATH,
         scopes: Optional[List[str]] = None,
+        credentials: Optional[Credentials] = None,
     ):
         self.credentials_path = Path(credentials_path)
         self.token_path = Path(token_path)
         self.scopes = scopes or GMAIL_SCOPES
+        self._credentials = credentials
         self._service = None
 
     def _get_credentials(self):
@@ -86,6 +90,12 @@ class GmailProvider(EmailProvider):
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
+
+        if self._credentials is not None:
+            if self._credentials.expired and self._credentials.refresh_token:
+                logger.info("Refreshing expired in-memory Gmail OAuth token...")
+                self._credentials.refresh(Request())
+            return self._credentials
 
         creds = None
         if self.token_path.exists():

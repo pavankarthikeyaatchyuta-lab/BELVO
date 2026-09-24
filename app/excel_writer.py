@@ -43,19 +43,15 @@ THIN_BORDER = Border(
 )
 
 
-def export_attendance_workbook(
+import io
+
+def build_attendance_workbook(
     attendance_records: List[AttendanceRecord],
     processing_logs: List[ProcessingLogEntry],
-    output_path: Path,
-) -> Path:
+) -> openpyxl.Workbook:
     """
-    Creates and styles an Excel workbook containing:
-    1. 'Attendance' sheet: Date, Person, Email, Status
-    2. 'Processing Log' sheet: Audit logs of all processed and rejected emails
+    Constructs and styles an openpyxl Workbook with 'Attendance' and 'Processing Log' sheets.
     """
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
     wb = openpyxl.Workbook()
 
     # --- Sheet 1: Attendance ---
@@ -154,5 +150,35 @@ def export_attendance_workbook(
         col_letter = get_column_letter(col[0].column)
         ws_log.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 65)
 
+    return wb
+
+
+def export_attendance_workbook(
+    attendance_records: List[AttendanceRecord],
+    processing_logs: List[ProcessingLogEntry],
+    output_path: Path,
+) -> Path:
+    """
+    Creates and saves an Excel workbook to a disk path.
+    Used by CLI, local development, and tests.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wb = build_attendance_workbook(attendance_records, processing_logs)
     wb.save(str(output_path))
     return output_path
+
+
+def export_attendance_bytes(
+    attendance_records: List[AttendanceRecord],
+    processing_logs: List[ProcessingLogEntry],
+) -> bytes:
+    """
+    Creates an Excel workbook in memory and returns raw bytes.
+    Ideal for serverless environments (Vercel) without persistent disk.
+    """
+    wb = build_attendance_workbook(attendance_records, processing_logs)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+

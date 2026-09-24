@@ -50,7 +50,10 @@
 
       <div id="gmail-auth-row" class="auth-row hidden">
         <button id="btn-connect" class="btn btn-outline btn-sm">
-          🔑 Test / Connect Gmail OAuth
+          🔑 Connect with Google
+        </button>
+        <button id="btn-logout" class="btn btn-outline btn-sm hidden" style="border-color:#ef4444; color:#ef4444;">
+          Disconnect
         </button>
         <span id="auth-status-text" class="auth-status-hint"></span>
       </div>
@@ -107,10 +110,22 @@
       </button>
     </section>
 
+    <!-- Settings / Endpoint Config Accordion -->
+    <div class="endpoint-bar">
+      <button id="btn-toggle-settings" class="btn-text">⚙️ Backend Settings</button>
+      <div id="settings-panel" class="settings-panel hidden">
+        <label for="input-api-url">Backend API Base URL</label>
+        <div class="url-input-group">
+          <input type="text" id="input-api-url" class="form-control form-control-sm" placeholder="https://<project>.vercel.app or http://127.0.0.1:8000">
+          <button id="btn-save-url" class="btn btn-secondary btn-sm">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Status / Notification Console -->
     <footer class="app-footer">
       <div id="status-console" class="status-console">
-        Ready. Ensure backend is running (`python main.py --server`).
+        Ready. Select mode and click Scan Inbox or Process Attendance.
       </div>
     </footer>
   </div>
