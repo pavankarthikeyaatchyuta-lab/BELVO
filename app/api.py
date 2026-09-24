@@ -6,8 +6,11 @@ Supports both Vercel Serverless deployment and local CLI development.
 
 from datetime import datetime
 import io
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import List, Optional
 from fastapi import FastAPI, Header, HTTPException, Query, Response, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
