@@ -226,6 +226,52 @@ class TestAttendanceEngine:
         pavan_rec = next(r for r in records if r.email == "pavan@example.com")
         assert pavan_rec.status == AttendanceStatus.PRESENT
 
+    def test_auto_discover_sender(self):
+        """Auto-discover mode automatically adds valid report senders to attendance."""
+        messages = [
+            EmailMessage(
+                id="1",
+                sender="Mayuri Mamindla <mayuri@gmail.com>",
+                subject="Daily Work Report - 2026-09-25",
+            )
+        ]
+        engine = AttendanceEngine(employees=[], leave_entries=[], auto_discover=True, only_present_and_leave=True)
+        records, logs, stats = engine.process_attendance(messages, "2026-09-25")
+
+        assert len(records) == 1
+        assert records[0].person == "Mayuri Mamindla"
+        assert records[0].email == "mayuri@gmail.com"
+        assert records[0].status == AttendanceStatus.PRESENT
+        assert stats["present_count"] == 1
+        assert stats["absent_count"] == 0
+
+    def test_only_present_and_leave_filtering(self, sample_employees, sample_leave):
+        """When only_present_and_leave is enabled, non-reporting employees are excluded rather than listed as absent."""
+        messages = [
+            EmailMessage(
+                id="1",
+                sender="Pavan Atchyuta <pavan@example.com>",
+                subject="Daily Work Report - 2026-09-17",
+            )
+        ]
+        engine = AttendanceEngine(
+            employees=sample_employees,
+            leave_entries=sample_leave,
+            auto_discover=False,
+            only_present_and_leave=True,
+        )
+        records, logs, stats = engine.process_attendance(messages, "2026-09-17")
+
+        # Pavan is Present, Ananya is Leave. The other 3 absentees are filtered out.
+        assert len(records) == 2
+        statuses = {r.email: r.status for r in records}
+        assert statuses["pavan@example.com"] == AttendanceStatus.PRESENT
+        assert statuses["ananya@example.com"] == AttendanceStatus.LEAVE
+        assert stats["present_count"] == 1
+        assert stats["leave_count"] == 1
+        assert stats["absent_count"] == 0
+        assert stats["total_employees"] == 2
+
 
 class TestExcelWriter:
     """Tests for Excel workbook generation."""

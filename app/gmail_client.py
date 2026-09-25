@@ -140,11 +140,11 @@ class GmailProvider(EmailProvider):
         """
         service = self._get_service()
 
-        # Build date query window (target_date - 1 day to target_date + 2 days)
+        # Build date query window (target_date - 2 days to target_date + 3 days)
         try:
             target_dt = datetime.strptime(target_date, DATE_FORMAT)
-            after_date = (target_dt - timedelta(days=1)).strftime("%Y/%m/%d")
-            before_date = (target_dt + timedelta(days=2)).strftime("%Y/%m/%d")
+            after_date = (target_dt - timedelta(days=2)).strftime("%Y/%m/%d")
+            before_date = (target_dt + timedelta(days=3)).strftime("%Y/%m/%d")
             query = f'subject:"Daily Work Report" after:{after_date} before:{before_date}'
         except Exception:
             query = 'subject:"Daily Work Report"'
@@ -154,6 +154,14 @@ class GmailProvider(EmailProvider):
         try:
             results = service.users().messages().list(userId="me", q=query, maxResults=100).execute()
             messages_meta = results.get("messages", [])
+
+            # Fallback: If 0 messages matched the date window, query the most recent work reports
+            # so that UTC timezone boundaries or late submissions don't miss genuine reports.
+            if not messages_meta:
+                fallback_query = 'subject:"Daily Work Report"'
+                logger.info(f"0 messages found with date window. Querying fallback: {fallback_query}")
+                fallback_results = service.users().messages().list(userId="me", q=fallback_query, maxResults=50).execute()
+                messages_meta = fallback_results.get("messages", [])
         except Exception as e:
             logger.error(f"Failed to list messages from Gmail: {e}")
             raise

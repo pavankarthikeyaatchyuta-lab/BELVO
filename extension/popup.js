@@ -15,6 +15,7 @@ const connectionBadge = document.getElementById("connection-status");
 const connectionText = document.getElementById("connection-text");
 const modeSelect = document.getElementById("mode-select");
 const targetDateInput = document.getElementById("target-date");
+const btnToday = document.getElementById("btn-today");
 const btnScan = document.getElementById("btn-scan");
 const btnProcess = document.getElementById("btn-process");
 const btnConnect = document.getElementById("btn-connect");
@@ -61,6 +62,14 @@ function setConnectionState(isOnline, info = "") {
     connectionText.textContent = "Backend Offline";
     logStatus(`Backend not reachable at ${apiBaseUrl}.\nCheck settings or run \`python main.py --server\` if local.`, "error");
   }
+}
+
+function getLocalTodayDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 // Storage helpers (Chrome extension storage with localStorage fallback)
@@ -154,11 +163,31 @@ modeSelect.addEventListener("change", async () => {
   if (isGmail) {
     gmailAuthRow.classList.remove("hidden");
     await checkAuthStatus();
+    if (targetDateInput.value === "2026-09-17") {
+      const today = getLocalTodayDate();
+      targetDateInput.value = today;
+      await setStoredValue("belvo_target_date", today);
+    }
   } else {
     gmailAuthRow.classList.add("hidden");
+    targetDateInput.value = "2026-09-17";
+    await setStoredValue("belvo_target_date", "2026-09-17");
   }
   logStatus(`Mode switched to: ${isGmail ? "Gmail API" : "Mock Mode"}`);
 });
+
+targetDateInput.addEventListener("change", async () => {
+  await setStoredValue("belvo_target_date", targetDateInput.value);
+});
+
+if (btnToday) {
+  btnToday.addEventListener("click", async () => {
+    const today = getLocalTodayDate();
+    targetDateInput.value = today;
+    await setStoredValue("belvo_target_date", today);
+    logStatus(`Date set to today: ${today}`);
+  });
+}
 
 // Auto-claim session token from backend
 async function tryAutoClaimSession() {
@@ -460,6 +489,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   } else {
     gmailAuthRow.classList.add("hidden");
   }
+
+  // 5. Restore saved target date or smart default
+  const defaultDate = savedMode === "gmail" ? getLocalTodayDate() : "2026-09-17";
+  const savedDate = await getStoredValue("belvo_target_date", defaultDate);
+  targetDateInput.value = savedDate;
 
   await checkBackendStatus();
 });

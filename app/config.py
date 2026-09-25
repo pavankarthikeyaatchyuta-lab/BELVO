@@ -35,12 +35,16 @@ GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 DATE_FORMAT = "%Y-%m-%d"
 
 # Regex for Daily Work Report subject:
-# Accepts e.g.:
+# Accepts:
 # - "Daily Work Report - 2026-09-17"
 # - "daily work report - 2026-09-17"
 # - "Daily Work Report: 2026-09-17"
-# - "  Daily Work Report - 2026-09-17  "
+# - "Daily Work Report - 17-09-2026"
+# - "Re: Daily Work Report - 2026-09-17"
+# - "Fwd: Daily Work Report - 2026-09-17"
+# - "Daily Work Report - 2026-09-17 - Mayuri"
 WORK_REPORT_SUBJECT_REGEX = re.compile(
-    r"^\s*daily\s+work\s+report\s*[-:]\s*(\d{4}-\d{2}-\d{2})\s*$",
-    re.IGNORECASE
+    r"^\s*(?:(?:re|fwd|fw):\s*)*daily\s+work\s+report\s*[-:\s]\s*(\d{4}-\d{2}-\d{2})(?:\s*[-:].*)?\s*$",
+    re.IGNORECASE,
 )
+

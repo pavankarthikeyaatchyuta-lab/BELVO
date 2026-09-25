@@ -15,21 +15,54 @@ def extract_clean_email(raw_sender: Optional[str]) -> str:
     Handles 'Name <user@domain.com>', '<user@domain.com>', 'user@domain.com'.
     Returns trimmed, lowercase email address or empty string.
     """
+    _, email = extract_sender_name_and_email(raw_sender)
+    return email
+
+
+def extract_sender_name_and_email(raw_sender: Optional[str]) -> Tuple[str, str]:
+    """
+    Extracts display name and normalized email address from a header value.
+    If name is missing, formats the email username into a human-friendly display name.
+    """
     if not raw_sender:
-        return ""
-    _, email_address = parseaddr(raw_sender)
+        return ("", "")
+    name, email_address = parseaddr(raw_sender)
     if not email_address and "@" in raw_sender:
-        # Fallback in case parseaddr didn't catch a raw unformatted string
         email_address = raw_sender.strip("<> ")
-    return email_address.strip().lower()
+    clean_email = email_address.strip().lower()
+    clean_name = name.strip()
+    if not clean_name and clean_email:
+        username = clean_email.split("@")[0]
+        clean_name = username.replace(".", " ").replace("_", " ").title()
+    return (clean_name, clean_email)
+
+
+def normalize_and_validate_date(date_str: str) -> Optional[str]:
+    """
+    Validates and normalizes date strings into standard YYYY-MM-DD.
+    Supports YYYY-MM-DD, YYYY/MM/DD, DD-MM-YYYY, DD/MM/YYYY.
+    Returns normalized YYYY-MM-DD or None if invalid.
+    """
+    if not date_str:
+        return None
+    cleaned = date_str.strip().replace("/", "-")
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            dt = datetime.strptime(cleaned, fmt)
+            return dt.strftime(DATE_FORMAT)
+        except ValueError:
+            continue
+    return None
 
 
 def validate_date_string(date_str: str) -> bool:
     """Validates that a string is a valid YYYY-MM-DD calendar date."""
+    if not date_str:
+        return False
     try:
         datetime.strptime(date_str, DATE_FORMAT)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 

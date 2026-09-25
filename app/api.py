@@ -462,13 +462,23 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         )
 
     employees = load_employees_from_csv(DEFAULT_EMPLOYEES_PATH)
-    if not employees:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No employees found in '{DEFAULT_EMPLOYEES_PATH}'.",
-        )
-
     leave_entries = load_leave_from_csv(DEFAULT_LEAVE_PATH)
+
+    if req.mode == "gmail":
+        # In Gmail mode, filter out dummy @example.com placeholder employees
+        # so real user inboxes are not polluted with test data
+        employees = [e for e in employees if not e.normalized_email.endswith("@example.com")]
+        leave_entries = [l for l in leave_entries if not l.normalized_email.endswith("@example.com")]
+        auto_discover = True
+        only_present_and_leave = True
+    else:
+        if not employees:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"No employees found in '{DEFAULT_EMPLOYEES_PATH}'.",
+            )
+        auto_discover = False
+        only_present_and_leave = False
 
     # 1. Fetch raw messages
     try:
@@ -503,7 +513,12 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         )
 
     # 2. Process attendance deterministically
-    engine = AttendanceEngine(employees=employees, leave_entries=leave_entries)
+    engine = AttendanceEngine(
+        employees=employees,
+        leave_entries=leave_entries,
+        auto_discover=auto_discover,
+        only_present_and_leave=only_present_and_leave,
+    )
     records, logs, stats = engine.process_attendance(raw_messages, req.date)
 
     # 3. Generate Excel in memory (serverless safe) and write to disk if writable

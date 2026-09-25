@@ -20,7 +20,7 @@ from app.models import (
     ParsedReport,
     ProcessingLogEntry,
 )
-from app.parser import parse_work_report
+from app.parser import extract_sender_name_and_email, parse_work_report
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +62,21 @@ def load_leave_from_csv(csv_path: Path) -> List[LeaveEntry]:
 class AttendanceEngine:
     """Core deterministic attendance computation engine."""
 
-    def __init__(self, employees: List[Employee], leave_entries: List[LeaveEntry]):
-        self.employees = employees
-        self.leave_entries = leave_entries
+    def __init__(
+        self,
+        employees: List[Employee],
+        leave_entries: List[LeaveEntry],
+        auto_discover: bool = False,
+        only_present_and_leave: bool = False,
+    ):
+        self.employees = list(employees)
+        self.leave_entries = list(leave_entries)
+        self.auto_discover = auto_discover
+        self.only_present_and_leave = only_present_and_leave
 
         # Indexed lookups for O(1) matching
         self.employee_by_email: Dict[str, Employee] = {
-            emp.normalized_email: emp for emp in employees
+            emp.normalized_email: emp for emp in self.employees
         }
         self.leave_set: Set[Tuple[str, str]] = {
             (entry.normalized_email, entry.date) for entry in leave_entries
@@ -82,7 +90,7 @@ class AttendanceEngine:
         """
         Processes work report messages against expected employees and leave records.
         Returns:
-            - attendance_records: exactly one row per expected employee
+            - attendance_records: exactly one row per evaluated employee
             - processing_logs: audit log of all decisions and edge cases
             - summary_stats: count metrics for reporting
         """
@@ -101,6 +109,14 @@ class AttendanceEngine:
             "unknown_senders": 0,
             "date_mismatches": 0,
         }
+
+        # Step 0: Ensure any person recorded on leave for target_date is in employee roster
+        for entry in self.leave_entries:
+            if entry.date == target_date and entry.normalized_email not in self.employee_by_email:
+                disp_name, _ = extract_sender_name_and_email(entry.email)
+                leave_emp = Employee(name=disp_name or entry.email, email=entry.email)
+                self.employees.append(leave_emp)
+                self.employee_by_email[entry.normalized_email] = leave_emp
 
         # Step 1: Parse and classify each received email
         for msg in raw_messages:
@@ -137,25 +153,7 @@ class AttendanceEngine:
                 )
                 continue
 
-            # Subject is valid and extracted_date is present
-            # Verify if sender is an expected employee
-            normalized_sender = parsed.normalized_sender_email
-            if normalized_sender not in self.employee_by_email:
-                stats["unknown_senders"] += 1
-                processing_logs.append(
-                    ProcessingLogEntry(
-                        timestamp=timestamp,
-                        category=LogCategory.UNKNOWN_SENDER,
-                        sender=msg.sender,
-                        subject=msg.subject,
-                        target_date=target_date,
-                        action="Ignored",
-                        details=f"Sender '{normalized_sender}' is not in the expected employee list. Ignored for attendance.",
-                    )
-                )
-                continue
-
-            # Verify if extracted report date matches the target attendance date
+            # Verify if extracted report date matches the target attendance date FIRST
             if parsed.extracted_date != target_date:
                 stats["date_mismatches"] += 1
                 processing_logs.append(
@@ -170,6 +168,30 @@ class AttendanceEngine:
                     )
                 )
                 continue
+
+            # Subject is valid and matches target_date
+            # Check if sender is an expected employee (or auto-discover if enabled)
+            normalized_sender = parsed.normalized_sender_email
+            if normalized_sender not in self.employee_by_email:
+                if self.auto_discover:
+                    disp_name, _ = extract_sender_name_and_email(msg.sender)
+                    new_emp = Employee(name=disp_name or normalized_sender, email=normalized_sender)
+                    self.employees.append(new_emp)
+                    self.employee_by_email[normalized_sender] = new_emp
+                else:
+                    stats["unknown_senders"] += 1
+                    processing_logs.append(
+                        ProcessingLogEntry(
+                            timestamp=timestamp,
+                            category=LogCategory.UNKNOWN_SENDER,
+                            sender=msg.sender,
+                            subject=msg.subject,
+                            target_date=target_date,
+                            action="Ignored",
+                            details=f"Sender '{normalized_sender}' is not in the expected employee list. Ignored for attendance.",
+                        )
+                    )
+                    continue
 
             # Handle duplicate submissions from the same employee
             if normalized_sender in valid_reports_by_employee:
@@ -255,12 +277,25 @@ class AttendanceEngine:
                 )
             )
 
-        summary_stats = {
-            "total_employees": len(self.employees),
-            "present_count": status_counts["P"],
-            "absent_count": status_counts["A"],
-            "leave_count": status_counts["L"],
-            **stats,
-        }
+        if self.only_present_and_leave:
+            attendance_records = [
+                r for r in attendance_records
+                if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LEAVE)
+            ]
+            summary_stats = {
+                "total_employees": len(attendance_records),
+                "present_count": status_counts["P"],
+                "absent_count": 0,
+                "leave_count": status_counts["L"],
+                **stats,
+            }
+        else:
+            summary_stats = {
+                "total_employees": len(self.employees),
+                "present_count": status_counts["P"],
+                "absent_count": status_counts["A"],
+                "leave_count": status_counts["L"],
+                **stats,
+            }
 
         return attendance_records, processing_logs, summary_stats
