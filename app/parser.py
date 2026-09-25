@@ -86,7 +86,7 @@ def is_late_submission(received_at_iso: Optional[str], work_date_str: str) -> bo
 
 # Additional regexes for flexible / live work report parsing
 FUZZY_WORK_REPORT_KEYWORD_REGEX = re.compile(
-    r"\b(?:daily\s+)?work\s+report\b|\bdaily\s+report\b|\bwork\s+status\b|\bstatus\s+report\b",
+    r"\b(?:daily\s+)?work\s+(?:report|submission|update|status|task)\b|\b(?:daily|today|my)\s+(?:daily\s+)?(?:work\s+)?(?:report|task)\b|\b(?:task|work)\s+(?:was\s+)?completed\b|\bwork\s+report\b|\bdaily\s+report\b|\bwork\s+submission\b",
     re.IGNORECASE,
 )
 DATE_IN_TEXT_REGEX = re.compile(

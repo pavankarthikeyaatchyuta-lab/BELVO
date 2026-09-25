@@ -340,11 +340,11 @@ btnScan.addEventListener("click", async () => {
       throw new Error(data.detail || "Scan request failed");
     }
 
-    scanSummaryBadge.textContent = `${data.total_found} emails found`;
-    tableTitle.textContent = "Scanned Inbox Emails Preview";
-    thCol1.textContent = "Sender";
-    thCol2.textContent = "Format Status";
-    thCol3.textContent = "Subject / Details";
+    if (scanSummaryBadge) scanSummaryBadge.textContent = `${data.total_found} emails found`;
+    if (tableTitle) tableTitle.textContent = "Scanned Inbox Emails Preview";
+    if (thCol1) thCol1.textContent = "Sender";
+    if (thCol2) thCol2.textContent = "Format Status";
+    if (thCol3) thCol3.textContent = "Subject / Details";
 
     rosterTbody.innerHTML = "";
     if (data.messages && data.messages.length > 0) {
@@ -426,11 +426,11 @@ btnProcess.addEventListener("click", async () => {
     metricL.textContent = data.stats.leave_count;
 
     // Reset Table Headers
-    tableTitle.textContent = "Attendance Roster";
-    thCol1.textContent = "Person";
-    thCol2.textContent = "Status";
-    thCol3.textContent = "Details";
-    scanSummaryBadge.textContent = `${data.records.length} records`;
+    if (tableTitle) tableTitle.textContent = "Attendance Roster";
+    if (thCol1) thCol1.textContent = "Person";
+    if (thCol2) thCol2.textContent = "Status";
+    if (thCol3) thCol3.textContent = "Details";
+    if (scanSummaryBadge) scanSummaryBadge.textContent = `${data.records.length} records`;
 
     // Populate Roster Table
     rosterTbody.innerHTML = "";
