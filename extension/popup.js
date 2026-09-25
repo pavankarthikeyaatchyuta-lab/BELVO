@@ -38,6 +38,9 @@ const settingsPanel = document.getElementById("settings-panel");
 const inputApiUrl = document.getElementById("input-api-url");
 const btnSaveUrl = document.getElementById("btn-save-url");
 
+const inputSessionToken = document.getElementById("input-session-token");
+const btnSaveToken = document.getElementById("btn-save-token");
+
 // Helpers
 function logStatus(message, type = "normal") {
   statusConsole.textContent = message;
@@ -145,16 +148,48 @@ async function checkAuthStatus() {
 }
 
 // 2. Mode Change
-modeSelect.addEventListener("change", () => {
+modeSelect.addEventListener("change", async () => {
   const isGmail = modeSelect.value === "gmail";
+  await setStoredValue("belvo_mode", modeSelect.value);
   if (isGmail) {
     gmailAuthRow.classList.remove("hidden");
-    checkAuthStatus();
+    await checkAuthStatus();
   } else {
     gmailAuthRow.classList.add("hidden");
   }
   logStatus(`Mode switched to: ${isGmail ? "Gmail API" : "Mock Mode"}`);
 });
+
+// Auto-claim session token from backend
+async function tryAutoClaimSession() {
+  const pendingState = await getStoredValue("belvo_auth_state", null);
+  if (pendingState) {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/auth/claim?state=${encodeURIComponent(pendingState)}`);
+      if (res.ok) {
+        const d = await res.json();
+        if (d.authenticated && d.session_token) {
+          sessionToken = d.session_token;
+          await setStoredValue("belvo_session_token", sessionToken);
+          await removeStoredValue("belvo_auth_state");
+          return true;
+        }
+      }
+    } catch (e) {}
+  }
+  try {
+    const resLatest = await fetch(`${apiBaseUrl}/api/auth/latest`);
+    if (resLatest.ok) {
+      const d = await resLatest.json();
+      if (d.authenticated && d.session_token) {
+        sessionToken = d.session_token;
+        await setStoredValue("belvo_session_token", sessionToken);
+        return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
 
 // 3. Connect with Google OAuth (Web flow)
 btnConnect.addEventListener("click", async () => {
@@ -165,6 +200,10 @@ btnConnect.addEventListener("click", async () => {
 
     if (!res.ok || !data.auth_url) {
       throw new Error(data.detail || "Failed to generate authorization URL");
+    }
+
+    if (data.state) {
+      await setStoredValue("belvo_auth_state", data.state);
     }
 
     // Open Google OAuth consent page
@@ -180,6 +219,7 @@ btnConnect.addEventListener("click", async () => {
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts++;
+      await tryAutoClaimSession();
       const isAuthed = await checkAuthStatus();
       if (isAuthed) {
         clearInterval(interval);
@@ -193,10 +233,34 @@ btnConnect.addEventListener("click", async () => {
   }
 });
 
+// Manual token apply
+if (btnSaveToken && inputSessionToken) {
+  btnSaveToken.addEventListener("click", async () => {
+    const val = inputSessionToken.value.trim();
+    if (!val) {
+      logStatus("Please paste a valid session token.", "error");
+      return;
+    }
+    sessionToken = val;
+    await setStoredValue("belvo_session_token", sessionToken);
+    await setStoredValue("belvo_mode", "gmail");
+    modeSelect.value = "gmail";
+    gmailAuthRow.classList.remove("hidden");
+    const isAuthed = await checkAuthStatus();
+    if (isAuthed) {
+      logStatus("✅ Session token verified and connected!", "success");
+      inputSessionToken.value = "";
+    } else {
+      logStatus("Invalid or expired session token.", "error");
+    }
+  });
+}
+
 // Logout / Disconnect
 btnLogout.addEventListener("click", async () => {
   sessionToken = null;
   await removeStoredValue("belvo_session_token");
+  await removeStoredValue("belvo_auth_state");
   try {
     await fetch(`${apiBaseUrl}/api/auth/logout`, { method: "POST" });
   } catch (e) {}
@@ -376,12 +440,26 @@ window.addEventListener("message", async (event) => {
 
 // Initialize on load
 document.addEventListener("DOMContentLoaded", async () => {
-  // Load saved API URL or default
+  // 1. Load saved API URL or default
   apiBaseUrl = await getStoredValue("belvo_api_url", DEFAULT_CLOUD_URL);
   inputApiUrl.value = apiBaseUrl;
 
-  // Load saved session token
+  // 2. Load saved session token
   sessionToken = await getStoredValue("belvo_session_token", null);
+
+  // 3. If no session token, attempt auto-claim from recent web auth
+  if (!sessionToken) {
+    await tryAutoClaimSession();
+  }
+
+  // 4. Restore saved mode (default to gmail)
+  const savedMode = await getStoredValue("belvo_mode", "gmail");
+  modeSelect.value = savedMode;
+  if (savedMode === "gmail") {
+    gmailAuthRow.classList.remove("hidden");
+  } else {
+    gmailAuthRow.classList.add("hidden");
+  }
 
   await checkBackendStatus();
 });

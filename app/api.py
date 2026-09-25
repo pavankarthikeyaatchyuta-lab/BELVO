@@ -9,9 +9,10 @@ import io
 import logging
 import os
 from pathlib import Path
+import time
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
-from typing import List, Optional
 from fastapi import FastAPI, Header, HTTPException, Query, Response, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -58,6 +59,10 @@ app.add_middleware(
 
 # In-memory cached Excel bytes for serverless execution
 _latest_excel_bytes: Optional[bytes] = None
+
+# In-memory session tracking for seamless extension auto-claim
+_pending_sessions: Dict[str, Tuple[str, float]] = {}
+_latest_session: Optional[Tuple[str, float]] = None
 
 
 class ScanRequest(BaseModel):
@@ -184,6 +189,12 @@ def google_oauth_callback(
             detail=f"Token exchange failed: {str(e)}",
         )
 
+    global _latest_session, _pending_sessions
+    now = time.time()
+    _latest_session = (session_token, now)
+    if state:
+        _pending_sessions[state] = (session_token, now)
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -197,15 +208,17 @@ def google_oauth_callback(
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
       margin: 0;
+      padding: 16px;
     }}
     .card {{
       background: white;
       padding: 32px;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-      max-width: 440px;
+      max-width: 480px;
+      width: 100%;
       text-align: center;
     }}
     .icon {{ font-size: 48px; margin-bottom: 12px; }}
@@ -213,7 +226,7 @@ def google_oauth_callback(
     p {{ color: #4b5563; font-size: 14px; line-height: 1.5; margin: 8px 0; }}
     .badge {{
       display: inline-block;
-      margin-top: 16px;
+      margin-top: 12px;
       padding: 6px 16px;
       background: #d4edda;
       color: #155724;
@@ -229,6 +242,13 @@ def google_oauth_callback(
     <h2>Gmail Connected Successfully!</h2>
     <p>Your Gmail account has been securely linked with read-only access for daily work-report scanning.</p>
     <div class="badge">Session Established</div>
+    <div style="margin-top: 20px; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; text-align: left;">
+      <p style="margin: 0 0 6px; font-size: 12px; color: #166534; font-weight: 600;">Extension Session Token:</p>
+      <div style="display: flex; gap: 6px;">
+        <input type="text" id="tokenField" value="{session_token}" readonly style="flex: 1; font-size: 11px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;" />
+        <button onclick="navigator.clipboard.writeText('{session_token}'); this.innerText='Copied!';" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #16a34a; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
+      </div>
+    </div>
     <p style="margin-top: 16px; font-size: 12px; color: #9ca3af;">
       You can now close this tab and return to the Belvo Chrome Extension.
     </p>
@@ -253,6 +273,34 @@ def google_oauth_callback(
         max_age=86400 * 30,
     )
     return response
+
+
+@app.get("/api/auth/latest")
+@app.get("/auth/latest")
+def get_latest_session():
+    """Returns the most recent authenticated session token if active within 30 minutes."""
+    global _latest_session
+    if _latest_session:
+        token, timestamp = _latest_session
+        if time.time() - timestamp < 1800:
+            creds = get_credentials_from_session_token(token)
+            if creds and creds.valid:
+                return {"authenticated": True, "session_token": token}
+    return {"authenticated": False, "session_token": None}
+
+
+@app.get("/api/auth/claim")
+@app.get("/auth/claim")
+def claim_session(state: str = Query(...)):
+    """Allows an extension to claim a session token by OAuth state."""
+    global _pending_sessions
+    if state in _pending_sessions:
+        token, timestamp = _pending_sessions[state]
+        if time.time() - timestamp < 1800:
+            creds = get_credentials_from_session_token(token)
+            if creds and creds.valid:
+                return {"authenticated": True, "session_token": token}
+    return {"authenticated": False, "session_token": None}
 
 
 @app.get("/api/auth/status")
