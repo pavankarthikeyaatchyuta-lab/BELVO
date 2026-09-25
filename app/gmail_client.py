@@ -19,7 +19,7 @@ from app.config import (
     DEFAULT_MOCK_EMAILS_PATH,
     DATE_FORMAT,
 )
-from app.models import EmailMessage
+from app.models import EmailMessage, Employee
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,10 @@ class EmailProvider(ABC):
     def fetch_messages(self, target_date: str) -> List[EmailMessage]:
         """Fetch email messages relevant to the given target work date."""
         pass
+
+    def fetch_team_roster(self) -> List[Employee]:
+        """Discovers team roster members from history."""
+        return []
 
 
 class MockEmailProvider(EmailProvider):
@@ -229,3 +233,54 @@ class GmailProvider(EmailProvider):
 
         logger.info(f"Retrieved {len(email_messages)} messages from Gmail.")
         return email_messages
+
+    def fetch_team_roster(self) -> List[Employee]:
+        """
+        Discovers active team members who regularly submit work reports or leave notices.
+        Scans recent messages from the mailbox to build the active employee roster.
+        """
+        if hasattr(self, "_roster_cache") and self._roster_cache:
+            return self._roster_cache
+
+        from app.parser import extract_sender_name_and_email
+        service = self._get_service()
+        roster: List[Employee] = []
+        seen_emails = set()
+
+        try:
+            # Query recent attendance emails from the mailbox
+            query = (
+                'subject:(report OR submission OR task OR work OR leave OR absent OR update OR attendance) '
+                '-from:no-reply -from:google.com'
+            )
+            results = service.users().messages().list(userId="me", q=query, maxResults=50).execute()
+            messages_meta = results.get("messages", [])
+
+            for meta in messages_meta:
+                try:
+                    msg_data = (
+                        service.users()
+                        .messages()
+                        .get(userId="me", id=meta["id"], format="metadata", metadataHeaders=["From"])
+                        .execute()
+                    )
+                    headers = msg_data.get("payload", {}).get("headers", [])
+                    sender_header = next((h["value"] for h in headers if h["name"].lower() == "from"), "")
+                    if sender_header:
+                        name, clean_email = extract_sender_name_and_email(sender_header)
+                        if (
+                            clean_email
+                            and clean_email not in seen_emails
+                            and "no-reply" not in clean_email
+                            and "google.com" not in clean_email
+                            and not clean_email.endswith("@example.com")
+                        ):
+                            seen_emails.add(clean_email)
+                            roster.append(Employee(name=name or clean_email, email=clean_email))
+                except Exception as e:
+                    logger.debug(f"Failed to extract roster member: {e}")
+        except Exception as e:
+            logger.warning(f"Could not auto-fetch team roster from Gmail: {e}")
+
+        self._roster_cache = roster
+        return roster

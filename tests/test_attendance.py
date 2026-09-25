@@ -347,7 +347,7 @@ class TestAttendanceEngine:
         assert len(records) == 1
         assert records[0].email == "pavan@gmail.com"
         assert records[0].status == AttendanceStatus.PRESENT
-        assert "superseded earlier leave notice" in records[0].notes
+        assert "superseded earlier absence/leave notice" in records[0].notes
         assert stats["present_count"] == 1
         assert stats["leave_count"] == 0
 
@@ -380,7 +380,7 @@ class TestAttendanceEngine:
         assert stats_b["present_count"] == 0
 
     def test_leave_subjects_and_fuzzy_work_variations(self):
-        """Verify natural variations for leave (absent, permission, ooo) and work reports (tasks completed, daily update)."""
+        """Verify natural variations for leave (permission, ooo, casual leave), absent notices, and work reports."""
         messages = [
             EmailMessage(
                 id="m1",
@@ -405,17 +405,72 @@ class TestAttendanceEngine:
             employees=[],
             leave_entries=[],
             auto_discover=True,
-            only_present_and_leave=True,
+            only_present_and_leave=False,
             allow_fuzzy=True,
         )
         records, logs, stats = engine.process_attendance(messages, "2026-09-25")
 
         status_by_email = {r.email: r.status for r in records}
         assert status_by_email["a@test.com"] == AttendanceStatus.LEAVE
-        assert status_by_email["b@test.com"] == AttendanceStatus.LEAVE
+        assert status_by_email["b@test.com"] == AttendanceStatus.ABSENT
         assert status_by_email["c@test.com"] == AttendanceStatus.PRESENT
-        assert stats["leave_count"] == 2
+        assert stats["leave_count"] == 1
+        assert stats["absent_count"] == 1
         assert stats["present_count"] == 1
+
+    def test_explicit_absent_email_notice(self):
+        """When an employee sends an email declaring absence, they are marked ABSENT (A)."""
+        msg = EmailMessage(
+            id="absent-1",
+            sender="Amulya <amulya7004@gmail.com>",
+            subject="Absent today",
+            received_at="2026-09-25T09:00:00+05:30",
+        )
+        engine = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=False,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance([msg], "2026-09-25")
+
+        assert len(records) == 1
+        assert records[0].person == "Amulya"
+        assert records[0].email == "amulya7004@gmail.com"
+        assert records[0].status == AttendanceStatus.ABSENT
+        assert "Absent as reported via email notice" in records[0].notes
+        assert stats["absent_count"] == 1
+        assert stats["present_count"] == 0
+
+    def test_known_team_member_marked_absent_when_no_email_sent(self):
+        """A regular team member in the roster who fails to submit an email on a day is marked ABSENT (A)."""
+        roster = [
+            Employee(name="Pavan", email="pavan@belvo.com"),
+            Employee(name="Amulya", email="amulya@belvo.com"),
+        ]
+        # Only Pavan sends a report for 2026-09-25
+        msg = EmailMessage(
+            id="m1",
+            sender="Pavan <pavan@belvo.com>",
+            subject="Daily Work Report - 2026-09-25",
+            received_at="2026-09-25T18:00:00+05:30",
+        )
+        engine = AttendanceEngine(
+            employees=roster,
+            leave_entries=[],
+            auto_discover=False,
+            only_present_and_leave=False,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance([msg], "2026-09-25")
+
+        status_by_email = {r.email: r.status for r in records}
+        assert status_by_email["pavan@belvo.com"] == AttendanceStatus.PRESENT
+        assert status_by_email["amulya@belvo.com"] == AttendanceStatus.ABSENT
+        assert stats["present_count"] == 1
+        assert stats["absent_count"] == 1
+        assert stats["total_employees"] == 2
 
 
 

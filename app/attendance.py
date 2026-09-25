@@ -195,11 +195,31 @@ class AttendanceEngine:
                     )
                     continue
 
-            # Record valid submission (either leave notice or work report)
+            # Record valid submission (leave notice, absent notice, or work report)
             is_subsequent = normalized_sender in valid_submissions_by_employee
             valid_submissions_by_employee.setdefault(normalized_sender, []).append(parsed)
 
-            if parsed.is_leave:
+            if parsed.is_absent:
+                stats["valid_reports"] += 1
+                if is_subsequent:
+                    stats["duplicate_reports"] += 1
+                    action = "Subsequent Absent Notice"
+                    details = f"Subsequent absent email received from '{normalized_sender}' for {target_date}. Latest submission timestamp will determine status."
+                else:
+                    action = "Absent Recorded"
+                    details = f"Email absent notice received for {target_date}."
+                processing_logs.append(
+                    ProcessingLogEntry(
+                        timestamp=timestamp,
+                        category=LogCategory.VALID_REPORT,
+                        sender=msg.sender,
+                        subject=msg.subject,
+                        target_date=target_date,
+                        action=action,
+                        details=details,
+                    )
+                )
+            elif parsed.is_leave:
                 stats["valid_reports"] += 1
                 if is_subsequent:
                     stats["duplicate_reports"] += 1
@@ -283,6 +303,12 @@ class AttendanceEngine:
                 if not self.allow_fuzzy and has_scheduled_leave:
                     status = AttendanceStatus.LEAVE
                     note = "On leave as recorded in leave registry. (Work report also received, overridden by leave precedence)."
+                elif latest_sub.is_absent:
+                    status = AttendanceStatus.ABSENT
+                    if count > 1:
+                        note = f"Absent as per latest submission ({count} emails received, latest is absent notice)."
+                    else:
+                        note = "Absent as reported via email notice."
                 elif latest_sub.is_leave:
                     status = AttendanceStatus.LEAVE
                     if count > 1:
@@ -292,9 +318,9 @@ class AttendanceEngine:
                 else:
                     status = AttendanceStatus.PRESENT
                     if count > 1:
-                        had_leave = any(s.is_leave for s in sorted_subs[:-1])
-                        if had_leave:
-                            note = f"Present as per latest work report ({count} emails received, superseded earlier leave notice)."
+                        had_leave_or_absent = any(s.is_leave or s.is_absent for s in sorted_subs[:-1])
+                        if had_leave_or_absent:
+                            note = f"Present as per latest work report ({count} emails received, superseded earlier absence/leave notice)."
                         else:
                             note = f"Present ({count} reports received, latest is work report)."
                     else:

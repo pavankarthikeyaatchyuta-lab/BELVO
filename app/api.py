@@ -433,6 +433,7 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
             "received_at": msg.received_at,
             "is_valid": parsed.is_valid,
             "is_leave": parsed.is_leave,
+            "is_absent": parsed.is_absent,
             "extracted_date": parsed.extracted_date,
             "category": parsed.category.value if hasattr(parsed.category, "value") else str(parsed.category),
             "notes": parsed.notes,
@@ -472,7 +473,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         employees = [e for e in employees if not e.normalized_email.endswith("@example.com")]
         leave_entries = [l for l in leave_entries if not l.normalized_email.endswith("@example.com")]
         auto_discover = True
-        only_present_and_leave = True
+        only_present_and_leave = False
         allow_fuzzy = True
     else:
         if not employees:
@@ -484,7 +485,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         only_present_and_leave = False
         allow_fuzzy = False
 
-    # 1. Fetch raw messages
+    # 1. Fetch raw messages and team roster
     try:
         if req.mode == "gmail":
             session_token = extract_bearer_token(authorization, req.session_token)
@@ -504,6 +505,17 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Gmail account is not connected. Please click 'Connect with Google' or use Mock Mode.",
                     )
+
+            # Discover active team roster from recent mailbox history
+            try:
+                discovered_roster = provider.fetch_team_roster()
+                known_emails = {e.normalized_email for e in employees}
+                for emp in discovered_roster:
+                    if emp.normalized_email not in known_emails:
+                        employees.append(emp)
+                        known_emails.add(emp.normalized_email)
+            except Exception as e:
+                logger.warning(f"Could not discover team roster from Gmail: {e}")
         else:
             provider = MockEmailProvider(data_path=DEFAULT_MOCK_EMAILS_PATH)
 

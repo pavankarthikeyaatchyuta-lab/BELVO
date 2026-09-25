@@ -93,13 +93,16 @@ FUZZY_WORK_REPORT_KEYWORD_REGEX = re.compile(
     r"\bdaily\s+update\b|\bwork\s+update\b|\bstatus\s+update\b|\btask\s+update\b",
     re.IGNORECASE,
 )
+ABSENT_SUBJECT_REGEX = re.compile(
+    r"\babsent\b|\bmarking\s+absent\b|\babsent\s+today\b|\babsence\b|\bnot\s+attending\b",
+    re.IGNORECASE,
+)
 LEAVE_SUBJECT_REGEX = re.compile(
     r"\b(?:on\s+|taking\s+|applying\s+for\s+)?leave\b|"
     r"\bleave\s+(?:application|request|notice|for\s+today|today|day)\b|"
     r"\b(?:sick|casual|emergency|annual|planned)\s+leave\b|"
-    r"\babsent\b|"
     r"\b(?:day\s+off|out\s+of\s+office|\booo\b)\b|"
-    r"\b(?:unable\s+to|cannot|can't|not)\s+attend\b|"
+    r"\b(?:unable\s+to|cannot|can't)\s+attend\b|"
     r"\bpermission(?:\s+for\s+today)?\b|"
     r"\bnot\s+(?:available|coming|well)\b",
     re.IGNORECASE,
@@ -163,7 +166,43 @@ def parse_work_report(
                 notes=f"Extracted date '{extracted_date}' is not a valid calendar date."
             )
 
-    # Case 3: Leave notice parsing (used in live Gmail mode)
+    # Case 3: Explicit Absent notice parsing (used in live Gmail mode)
+    if allow_fuzzy and ABSENT_SUBJECT_REGEX.search(subject):
+        extracted_date = None
+        date_match = DATE_IN_TEXT_REGEX.search(subject)
+        if date_match:
+            extracted_date = normalize_and_validate_date(date_match.group(1))
+
+        if not extracted_date and message.received_at:
+            try:
+                clean_iso = message.received_at.replace("Z", "+00:00")
+                recv_dt = datetime.fromisoformat(clean_iso)
+                try:
+                    target_dt = datetime.strptime(target_date, DATE_FORMAT)
+                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                        extracted_date = target_date
+                    else:
+                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                except Exception:
+                    extracted_date = recv_dt.strftime(DATE_FORMAT)
+            except Exception:
+                extracted_date = None
+
+        if not extracted_date:
+            extracted_date = target_date
+
+        if validate_date_string(extracted_date):
+            return ParsedReport(
+                raw_message=message,
+                is_valid=True,
+                normalized_sender_email=normalized_sender,
+                extracted_date=extracted_date,
+                category=LogCategory.VALID_REPORT,
+                notes=f"Absent notice received via email for {extracted_date}.",
+                is_absent=True,
+            )
+
+    # Case 4: Leave notice parsing (used in live Gmail mode)
     if allow_fuzzy and LEAVE_SUBJECT_REGEX.search(subject):
         extracted_date = None
         date_match = DATE_IN_TEXT_REGEX.search(subject)

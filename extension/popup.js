@@ -356,7 +356,10 @@ btnScan.addEventListener("click", async () => {
 
         const tdStatus = document.createElement("td");
         const spanBadge = document.createElement("span");
-        if (msg.is_leave) {
+        if (msg.is_absent) {
+          spanBadge.textContent = "Absent Notice";
+          spanBadge.className = "status-cell-a";
+        } else if (msg.is_leave) {
           spanBadge.textContent = "Leave Notice";
           spanBadge.className = "status-cell-l";
         } else if (msg.is_valid) {

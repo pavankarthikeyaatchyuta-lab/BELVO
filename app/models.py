@@ -60,6 +60,7 @@ class ParsedReport:
     category: LogCategory = LogCategory.VALID_REPORT
     notes: str = ""
     is_leave: bool = False
+    is_absent: bool = False
 
 
 @dataclass
