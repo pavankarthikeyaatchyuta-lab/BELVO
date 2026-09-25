@@ -98,8 +98,8 @@ class AttendanceEngine:
         """
         processing_logs: List[ProcessingLogEntry] = []
 
-        # Tracking employee valid submissions for the target date
-        valid_reports_by_employee: Dict[str, List[ParsedReport]] = {}
+        # Tracking employee valid submissions (work reports & leave notices) for target_date
+        valid_submissions_by_employee: Dict[str, List[ParsedReport]] = {}
 
         stats = {
             "total_emails": len(raw_messages),
@@ -195,10 +195,19 @@ class AttendanceEngine:
                     )
                     continue
 
-            # Check if this email is a Leave notice
+            # Record valid submission (either leave notice or work report)
+            is_subsequent = normalized_sender in valid_submissions_by_employee
+            valid_submissions_by_employee.setdefault(normalized_sender, []).append(parsed)
+
             if parsed.is_leave:
-                self.leave_set.add((normalized_sender, target_date))
                 stats["valid_reports"] += 1
+                if is_subsequent:
+                    stats["duplicate_reports"] += 1
+                    action = "Subsequent Leave Notice"
+                    details = f"Subsequent leave email received from '{normalized_sender}' for {target_date}. Latest submission timestamp will determine status."
+                else:
+                    action = "Leave Recorded"
+                    details = f"Email leave notice received for {target_date}."
                 processing_logs.append(
                     ProcessingLogEntry(
                         timestamp=timestamp,
@@ -206,84 +215,97 @@ class AttendanceEngine:
                         sender=msg.sender,
                         subject=msg.subject,
                         target_date=target_date,
-                        action="Leave Recorded",
-                        details=f"Email leave notice received for {target_date}. Status set to L.",
-                    )
-                )
-                continue
-
-            # Handle duplicate submissions from the same employee
-            if normalized_sender in valid_reports_by_employee:
-                stats["duplicate_reports"] += 1
-                valid_reports_by_employee[normalized_sender].append(parsed)
-                processing_logs.append(
-                    ProcessingLogEntry(
-                        timestamp=timestamp,
-                        category=LogCategory.DUPLICATE_REPORT,
-                        sender=msg.sender,
-                        subject=msg.subject,
-                        target_date=target_date,
-                        action="Deduplicated",
-                        details=f"Multiple reports received from '{normalized_sender}' for {target_date}. Attendance row remains unique.",
-                    )
-                )
-                continue
-
-            # First valid submission for this employee
-            valid_reports_by_employee[normalized_sender] = [parsed]
-
-            if parsed.category == LogCategory.LATE_REPORT:
-                stats["late_reports"] += 1
-                processing_logs.append(
-                    ProcessingLogEntry(
-                        timestamp=timestamp,
-                        category=LogCategory.LATE_REPORT,
-                        sender=msg.sender,
-                        subject=msg.subject,
-                        target_date=target_date,
-                        action="Accepted (Late)",
-                        details=f"Email received after work date ({msg.received_at}), but explicitly marked for {target_date}. Present status established.",
+                        action=action,
+                        details=details,
                     )
                 )
             else:
-                stats["valid_reports"] += 1
-                processing_logs.append(
-                    ProcessingLogEntry(
-                        timestamp=timestamp,
-                        category=LogCategory.VALID_REPORT,
-                        sender=msg.sender,
-                        subject=msg.subject,
-                        target_date=target_date,
-                        action="Accepted",
-                        details=f"Valid on-time work report received for {target_date}.",
+                if is_subsequent:
+                    stats["duplicate_reports"] += 1
+                    processing_logs.append(
+                        ProcessingLogEntry(
+                            timestamp=timestamp,
+                            category=LogCategory.DUPLICATE_REPORT,
+                            sender=msg.sender,
+                            subject=msg.subject,
+                            target_date=target_date,
+                            action="Subsequent Work Report",
+                            details=f"Subsequent report received from '{normalized_sender}' for {target_date}. Latest submission timestamp will determine status.",
+                        )
                     )
-                )
+                else:
+                    if parsed.category == LogCategory.LATE_REPORT:
+                        stats["late_reports"] += 1
+                        action = "Accepted (Late)"
+                        details = f"Email received after work date ({msg.received_at}), but explicitly marked for {target_date}. Present status established."
+                    else:
+                        stats["valid_reports"] += 1
+                        action = "Accepted"
+                        details = f"Valid on-time work report received for {target_date}."
+                    processing_logs.append(
+                        ProcessingLogEntry(
+                            timestamp=timestamp,
+                            category=parsed.category,
+                            sender=msg.sender,
+                            subject=msg.subject,
+                            target_date=target_date,
+                            action=action,
+                            details=details,
+                        )
+                    )
 
         # Step 2: Determine P / A / L status for every expected employee
         attendance_records: List[AttendanceRecord] = []
         status_counts = {"P": 0, "A": 0, "L": 0}
 
+        def get_submission_time(rep: ParsedReport) -> datetime:
+            ts = rep.raw_message.received_at
+            if not ts:
+                return datetime.min
+            try:
+                clean = ts.replace("Z", "+00:00")
+                return datetime.fromisoformat(clean)
+            except Exception:
+                return datetime.min
+
         for emp in self.employees:
             emp_email = emp.normalized_email
-            is_on_leave = (emp_email, target_date) in self.leave_set
-            has_report = emp_email in valid_reports_by_employee
+            has_scheduled_leave = (emp_email, target_date) in self.leave_set
+            submissions = valid_submissions_by_employee.get(emp_email, [])
 
-            # Leave precedence rule:
-            # IF person is in leave list for selected date: L
-            # ELSE IF valid report exists: P
-            # ELSE: A
-            if is_on_leave:
-                status = AttendanceStatus.LEAVE
-                note = "On leave as recorded in leave registry."
-                if has_report:
-                    note += " (Work report also received, overridden by leave precedence)."
-            elif has_report:
-                status = AttendanceStatus.PRESENT
-                report_count = len(valid_reports_by_employee[emp_email])
-                note = f"Present (1 valid report)" if report_count == 1 else f"Present ({report_count} reports received, deduplicated)"
+            if submissions:
+                # If multiple emails received, sort chronologically and determine status by the latest email
+                sorted_subs = sorted(submissions, key=get_submission_time)
+                latest_sub = sorted_subs[-1]
+                count = len(sorted_subs)
+
+                # In strict mock mode (allow_fuzzy=False), scheduled CSV leave registry takes precedence
+                if not self.allow_fuzzy and has_scheduled_leave:
+                    status = AttendanceStatus.LEAVE
+                    note = "On leave as recorded in leave registry. (Work report also received, overridden by leave precedence)."
+                elif latest_sub.is_leave:
+                    status = AttendanceStatus.LEAVE
+                    if count > 1:
+                        note = f"On leave as per latest submission ({count} emails received, latest is leave notice)."
+                    else:
+                        note = "On leave as per email notice received for date."
+                else:
+                    status = AttendanceStatus.PRESENT
+                    if count > 1:
+                        had_leave = any(s.is_leave for s in sorted_subs[:-1])
+                        if had_leave:
+                            note = f"Present as per latest work report ({count} emails received, superseded earlier leave notice)."
+                        else:
+                            note = f"Present ({count} reports received, latest is work report)."
+                    else:
+                        note = "Present (1 valid report)"
             else:
-                status = AttendanceStatus.ABSENT
-                note = "Absent (no valid work report received for date)."
+                if has_scheduled_leave:
+                    status = AttendanceStatus.LEAVE
+                    note = "On leave as recorded in leave registry."
+                else:
+                    status = AttendanceStatus.ABSENT
+                    note = "Absent (no valid work report received for date)."
 
             status_counts[status.value] += 1
             attendance_records.append(

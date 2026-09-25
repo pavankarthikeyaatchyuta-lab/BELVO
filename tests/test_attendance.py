@@ -321,7 +321,8 @@ class TestAttendanceEngine:
         assert stats["present_count"] == 0
 
     def test_leave_and_work_report_from_same_person_precedence(self):
-        """When an employee submits both a leave notice and a work report, leave takes strict precedence (L > P)."""
+        """When an employee submits both a leave notice and a work report, status is determined by the latest email timestamp."""
+        # Case A: Leave at 20:38, followed by Work Report at 20:43 -> Latest is Work Report (Present)
         msg_leave = EmailMessage(
             id="msg-1",
             sender="Atchyuta Pavan Kart. <pavan@gmail.com>",
@@ -345,10 +346,38 @@ class TestAttendanceEngine:
 
         assert len(records) == 1
         assert records[0].email == "pavan@gmail.com"
-        assert records[0].status == AttendanceStatus.LEAVE
-        assert "overridden by leave precedence" in records[0].notes
-        assert stats["leave_count"] == 1
-        assert stats["present_count"] == 0
+        assert records[0].status == AttendanceStatus.PRESENT
+        assert "superseded earlier leave notice" in records[0].notes
+        assert stats["present_count"] == 1
+        assert stats["leave_count"] == 0
+
+        # Case B: Work Report in morning (09:00), followed by Leave notice in afternoon (14:00) -> Latest is Leave
+        msg_work_early = EmailMessage(
+            id="msg-early",
+            sender="Mayuri Mamindla <mayuri@gmail.com>",
+            subject="Daily Work Report - 2026-09-25",
+            received_at="2026-09-25T09:00:00+05:30",
+        )
+        msg_leave_late = EmailMessage(
+            id="msg-late",
+            sender="Mayuri Mamindla <mayuri@gmail.com>",
+            subject="Applying for leave for today due to emergency",
+            received_at="2026-09-25T14:00:00+05:30",
+        )
+        engine_b = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=True,
+            allow_fuzzy=True,
+        )
+        records_b, logs_b, stats_b = engine_b.process_attendance([msg_work_early, msg_leave_late], "2026-09-25")
+
+        assert len(records_b) == 1
+        assert records_b[0].email == "mayuri@gmail.com"
+        assert records_b[0].status == AttendanceStatus.LEAVE
+        assert stats_b["leave_count"] == 1
+        assert stats_b["present_count"] == 0
 
     def test_leave_subjects_and_fuzzy_work_variations(self):
         """Verify natural variations for leave (absent, permission, ooo) and work reports (tasks completed, daily update)."""
