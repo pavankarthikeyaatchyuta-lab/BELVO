@@ -89,6 +89,10 @@ FUZZY_WORK_REPORT_KEYWORD_REGEX = re.compile(
     r"\b(?:daily\s+)?work\s+(?:report|submission|update|status|task)\b|\b(?:daily|today|my)\s+(?:daily\s+)?(?:work\s+)?(?:report|task)\b|\b(?:task|work)\s+(?:was\s+)?completed\b|\bwork\s+report\b|\bdaily\s+report\b|\bwork\s+submission\b",
     re.IGNORECASE,
 )
+LEAVE_SUBJECT_REGEX = re.compile(
+    r"\b(?:on\s+)?leave\b|\bsick\s+leave\b|\bcasual\s+leave\b|\bapplying\s+for\s+leave\b|\bleave\s+application\b|\bleave\s+request\b",
+    re.IGNORECASE,
+)
 DATE_IN_TEXT_REGEX = re.compile(
     r"\b(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})\b"
 )
@@ -106,7 +110,7 @@ def parse_work_report(
     - Evaluates subject with regex
     - Validates embedded work date
     - Flags late reports without rejecting valid work date
-    - In allow_fuzzy mode, tolerates natural subject variations and infers date from timestamp if missing
+    - In allow_fuzzy mode, tolerates natural subject variations, recognizes leave notices, and infers date
     """
     normalized_sender = extract_clean_email(message.sender)
     subject = (message.subject or "").strip()
@@ -148,7 +152,36 @@ def parse_work_report(
                 notes=f"Extracted date '{extracted_date}' is not a valid calendar date."
             )
 
-    # Case 3: Flexible parsing (used in live Gmail mode)
+    # Case 3: Leave notice parsing (used in live Gmail mode)
+    if allow_fuzzy and LEAVE_SUBJECT_REGEX.search(subject):
+        extracted_date = None
+        date_match = DATE_IN_TEXT_REGEX.search(subject)
+        if date_match:
+            extracted_date = normalize_and_validate_date(date_match.group(1))
+
+        if not extracted_date and message.received_at:
+            try:
+                clean_iso = message.received_at.replace("Z", "+00:00")
+                recv_dt = datetime.fromisoformat(clean_iso)
+                extracted_date = recv_dt.strftime(DATE_FORMAT)
+            except Exception:
+                extracted_date = None
+
+        if not extracted_date:
+            extracted_date = target_date
+
+        if validate_date_string(extracted_date):
+            return ParsedReport(
+                raw_message=message,
+                is_valid=True,
+                normalized_sender_email=normalized_sender,
+                extracted_date=extracted_date,
+                category=LogCategory.VALID_REPORT,
+                notes=f"Leave notice received via email for {extracted_date}.",
+                is_leave=True,
+            )
+
+    # Case 4: Flexible work report parsing (used in live Gmail mode)
     if allow_fuzzy and FUZZY_WORK_REPORT_KEYWORD_REGEX.search(subject):
         extracted_date = None
         date_match = DATE_IN_TEXT_REGEX.search(subject)

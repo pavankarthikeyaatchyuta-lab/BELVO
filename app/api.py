@@ -432,6 +432,7 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
             "subject": msg.subject,
             "received_at": msg.received_at,
             "is_valid": parsed.is_valid,
+            "is_leave": parsed.is_leave,
             "extracted_date": parsed.extracted_date,
             "category": parsed.category.value if hasattr(parsed.category, "value") else str(parsed.category),
             "notes": parsed.notes,

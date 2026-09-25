@@ -195,6 +195,23 @@ class AttendanceEngine:
                     )
                     continue
 
+            # Check if this email is a Leave notice
+            if parsed.is_leave:
+                self.leave_set.add((normalized_sender, target_date))
+                stats["valid_reports"] += 1
+                processing_logs.append(
+                    ProcessingLogEntry(
+                        timestamp=timestamp,
+                        category=LogCategory.VALID_REPORT,
+                        sender=msg.sender,
+                        subject=msg.subject,
+                        target_date=target_date,
+                        action="Leave Recorded",
+                        details=f"Email leave notice received for {target_date}. Status set to L.",
+                    )
+                )
+                continue
+
             # Handle duplicate submissions from the same employee
             if normalized_sender in valid_reports_by_employee:
                 stats["duplicate_reports"] += 1

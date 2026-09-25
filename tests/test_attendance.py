@@ -296,6 +296,30 @@ class TestAttendanceEngine:
         assert stats["present_count"] == 1
         assert stats["valid_reports"] == 1
 
+    def test_leave_email_notice_handling(self):
+        """Leave email notice sets employee status to LEAVE (L)."""
+        msg = EmailMessage(
+            id="leave-1",
+            sender="Atchyuta Pavan Kart. <pavan@gmail.com>",
+            subject="Leave for today - hi, i am unable to attend meeting today",
+            received_at="2026-09-25T20:38:00+05:30",
+        )
+        engine = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=True,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance([msg], "2026-09-25")
+
+        assert len(records) == 1
+        assert records[0].person == "Atchyuta Pavan Kart."
+        assert records[0].email == "pavan@gmail.com"
+        assert records[0].status == AttendanceStatus.LEAVE
+        assert stats["leave_count"] == 1
+        assert stats["present_count"] == 0
+
 
 class TestExcelWriter:
     """Tests for Excel workbook generation."""
