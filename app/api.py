@@ -423,8 +423,9 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
         )
 
     parsed_items = []
+    allow_fuzzy = (req.mode == "gmail")
     for msg in raw_messages:
-        parsed = parse_work_report(msg, req.date)
+        parsed = parse_work_report(msg, req.date, allow_fuzzy=allow_fuzzy)
         parsed_items.append({
             "id": msg.id,
             "sender": msg.sender,
@@ -471,6 +472,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         leave_entries = [l for l in leave_entries if not l.normalized_email.endswith("@example.com")]
         auto_discover = True
         only_present_and_leave = True
+        allow_fuzzy = True
     else:
         if not employees:
             raise HTTPException(
@@ -479,6 +481,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
             )
         auto_discover = False
         only_present_and_leave = False
+        allow_fuzzy = False
 
     # 1. Fetch raw messages
     try:
@@ -518,6 +521,7 @@ def process_attendance(req: ProcessRequest, authorization: Optional[str] = Heade
         leave_entries=leave_entries,
         auto_discover=auto_discover,
         only_present_and_leave=only_present_and_leave,
+        allow_fuzzy=allow_fuzzy,
     )
     records, logs, stats = engine.process_attendance(raw_messages, req.date)
 

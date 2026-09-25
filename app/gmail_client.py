@@ -145,9 +145,9 @@ class GmailProvider(EmailProvider):
             target_dt = datetime.strptime(target_date, DATE_FORMAT)
             after_date = (target_dt - timedelta(days=2)).strftime("%Y/%m/%d")
             before_date = (target_dt + timedelta(days=3)).strftime("%Y/%m/%d")
-            query = f'subject:"Daily Work Report" after:{after_date} before:{before_date}'
+            query = f'(subject:"work report" OR subject:"daily report" OR subject:report) after:{after_date} before:{before_date}'
         except Exception:
-            query = 'subject:"Daily Work Report"'
+            query = 'subject:"work report" OR subject:"daily report" OR subject:report'
 
         logger.info(f"Querying Gmail API with query: {query}")
 
@@ -158,7 +158,7 @@ class GmailProvider(EmailProvider):
             # Fallback: If 0 messages matched the date window, query the most recent work reports
             # so that UTC timezone boundaries or late submissions don't miss genuine reports.
             if not messages_meta:
-                fallback_query = 'subject:"Daily Work Report"'
+                fallback_query = 'subject:"work report" OR subject:"daily report" OR subject:report'
                 logger.info(f"0 messages found with date window. Querying fallback: {fallback_query}")
                 fallback_results = service.users().messages().list(userId="me", q=fallback_query, maxResults=50).execute()
                 messages_meta = fallback_results.get("messages", [])

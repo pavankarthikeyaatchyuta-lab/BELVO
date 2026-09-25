@@ -68,11 +68,13 @@ class AttendanceEngine:
         leave_entries: List[LeaveEntry],
         auto_discover: bool = False,
         only_present_and_leave: bool = False,
+        allow_fuzzy: bool = False,
     ):
         self.employees = list(employees)
         self.leave_entries = list(leave_entries)
         self.auto_discover = auto_discover
         self.only_present_and_leave = only_present_and_leave
+        self.allow_fuzzy = allow_fuzzy
 
         # Indexed lookups for O(1) matching
         self.employee_by_email: Dict[str, Employee] = {
@@ -120,7 +122,7 @@ class AttendanceEngine:
 
         # Step 1: Parse and classify each received email
         for msg in raw_messages:
-            parsed = parse_work_report(msg, target_date)
+            parsed = parse_work_report(msg, target_date, allow_fuzzy=self.allow_fuzzy)
             timestamp = msg.received_at or datetime.now().isoformat()
 
             if parsed.category == LogCategory.MISSING_SUBJECT:

@@ -36,7 +36,7 @@
       <div class="form-group">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
           <label for="target-date" style="margin-bottom: 0;">Attendance Date</label>
-          <button id="btn-today" type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 11px;">📅 Today</button>
+          <button id="btn-today" type="button" class="btn btn-outline btn-sm" style="flex: none; width: auto; padding: 2px 8px; font-size: 11px;">📅 Today</button>
         </div>
         <input type="date" id="target-date" class="form-control" value="2026-09-17">
       </div>
@@ -102,15 +102,26 @@
         <table class="roster-table">
           <thead>
             <tr>
-              <th>Person</th>
-              <th>Status</th>
-              <th>Details</th>
+              <th id="th-col1">Person</th>
+              <th id="th-col2">Status</th>
+              <th id="th-col3">Details</th>
             </tr>
           </thead>
           <tbody id="roster-tbody">
             <!-- Dynamically populated -->
           </tbody>
         </table>
+      </div>
+
+      <!-- Audit & Processing Log Section -->
+      <div id="logs-container" class="hidden" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Processing Audit Log</span>
+          <span id="log-count-badge" class="badge" style="background:#e5e7eb; font-size: 10px; padding: 1px 6px; border-radius: 8px;">0 events</span>
+        </div>
+        <div id="logs-list" style="max-height: 140px; overflow-y: auto; font-size: 11px; display: flex; flex-direction: column; gap: 5px;">
+          <!-- Dynamically populated log entries -->
+        </div>
       </div>
     </section>
 

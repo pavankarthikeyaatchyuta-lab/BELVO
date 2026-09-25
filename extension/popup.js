@@ -33,6 +33,13 @@ const metricL = document.getElementById("metric-l");
 const resultsCard = document.getElementById("results-card");
 const rosterTbody = document.getElementById("roster-tbody");
 const scanSummaryBadge = document.getElementById("scan-summary-badge");
+const tableTitle = document.getElementById("table-title");
+const thCol1 = document.getElementById("th-col1");
+const thCol2 = document.getElementById("th-col2");
+const thCol3 = document.getElementById("th-col3");
+const logsContainer = document.getElementById("logs-container");
+const logCountBadge = document.getElementById("log-count-badge");
+const logsList = document.getElementById("logs-list");
 
 const btnToggleSettings = document.getElementById("btn-toggle-settings");
 const settingsPanel = document.getElementById("settings-panel");
@@ -43,6 +50,13 @@ const inputSessionToken = document.getElementById("input-session-token");
 const btnSaveToken = document.getElementById("btn-save-token");
 
 // Helpers
+function escapeHtml(text) {
+  if (!text) return "";
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function logStatus(message, type = "normal") {
   statusConsole.textContent = message;
   statusConsole.className = "status-console";
@@ -327,7 +341,48 @@ btnScan.addEventListener("click", async () => {
     }
 
     scanSummaryBadge.textContent = `${data.total_found} emails found`;
-    logStatus(`Scan complete: Found ${data.total_found} relevant emails for ${date}.`, "success");
+    tableTitle.textContent = "Scanned Inbox Emails Preview";
+    thCol1.textContent = "Sender";
+    thCol2.textContent = "Format Status";
+    thCol3.textContent = "Subject / Details";
+
+    rosterTbody.innerHTML = "";
+    if (data.messages && data.messages.length > 0) {
+      data.messages.forEach((msg) => {
+        const tr = document.createElement("tr");
+
+        const tdPerson = document.createElement("td");
+        tdPerson.innerHTML = `<strong>${escapeHtml(msg.sender)}</strong>`;
+
+        const tdStatus = document.createElement("td");
+        const spanBadge = document.createElement("span");
+        if (msg.is_valid) {
+          spanBadge.textContent = "Valid";
+          spanBadge.className = "status-cell-p";
+        } else {
+          spanBadge.textContent = msg.category || "Malformed";
+          spanBadge.className = "status-cell-a";
+        }
+        tdStatus.appendChild(spanBadge);
+
+        const tdDetails = document.createElement("td");
+        tdDetails.innerHTML = `<span style="font-weight:500;">${escapeHtml(msg.subject || "(no subject)")}</span><br><span style="color:#64748b; font-size:10px;">${escapeHtml(msg.notes || "")}</span>`;
+
+        tr.appendChild(tdPerson);
+        tr.appendChild(tdStatus);
+        tr.appendChild(tdDetails);
+        rosterTbody.appendChild(tr);
+      });
+      logStatus(`Scan complete: Found ${data.total_found} emails for ${date}. Review the preview above and click 'Process Attendance' to finalize.`, "success");
+    } else {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="3" style="text-align:center; padding:12px; color:#64748b;">No matching work reports found in mailbox for ${date}.</td>`;
+      rosterTbody.appendChild(tr);
+      logStatus(`Scan complete: 0 emails found for ${date}.`, "normal");
+    }
+
+    resultsCard.classList.remove("hidden");
+    logsContainer.classList.add("hidden");
   } catch (err) {
     logStatus(`Scan error: ${err.message}`, "error");
   } finally {
@@ -370,30 +425,68 @@ btnProcess.addEventListener("click", async () => {
     metricA.textContent = data.stats.absent_count;
     metricL.textContent = data.stats.leave_count;
 
+    // Reset Table Headers
+    tableTitle.textContent = "Attendance Roster";
+    thCol1.textContent = "Person";
+    thCol2.textContent = "Status";
+    thCol3.textContent = "Details";
+    scanSummaryBadge.textContent = `${data.records.length} records`;
+
     // Populate Roster Table
     rosterTbody.innerHTML = "";
-    data.records.forEach((rec) => {
+    if (data.records && data.records.length > 0) {
+      data.records.forEach((rec) => {
+        const tr = document.createElement("tr");
+
+        const tdPerson = document.createElement("td");
+        tdPerson.innerHTML = `<strong>${escapeHtml(rec.person)}</strong><br><small style="color:#64748b;">${escapeHtml(rec.email)}</small>`;
+
+        const tdStatus = document.createElement("td");
+        const spanBadge = document.createElement("span");
+        spanBadge.textContent = rec.status;
+        spanBadge.className = `status-cell-${rec.status.toLowerCase()}`;
+        tdStatus.appendChild(spanBadge);
+
+        const tdNotes = document.createElement("td");
+        tdNotes.textContent = rec.notes;
+        tdNotes.style.fontSize = "10px";
+        tdNotes.style.color = "#64748b";
+
+        tr.appendChild(tdPerson);
+        tr.appendChild(tdStatus);
+        tr.appendChild(tdNotes);
+        rosterTbody.appendChild(tr);
+      });
+    } else {
       const tr = document.createElement("tr");
-
-      const tdPerson = document.createElement("td");
-      tdPerson.textContent = rec.person;
-
-      const tdStatus = document.createElement("td");
-      const spanBadge = document.createElement("span");
-      spanBadge.textContent = rec.status;
-      spanBadge.className = `status-cell-${rec.status.toLowerCase()}`;
-      tdStatus.appendChild(spanBadge);
-
-      const tdNotes = document.createElement("td");
-      tdNotes.textContent = rec.notes;
-      tdNotes.style.fontSize = "10px";
-      tdNotes.style.color = "#64748b";
-
-      tr.appendChild(tdPerson);
-      tr.appendChild(tdStatus);
-      tr.appendChild(tdNotes);
+      tr.innerHTML = `<td colspan="3" style="text-align:center; padding:12px; color:#64748b;">0 employees marked present for ${date}. See the Audit Log below for details.</td>`;
       rosterTbody.appendChild(tr);
-    });
+    }
+
+    // Populate Audit & Processing Log
+    if (data.logs && data.logs.length > 0) {
+      logsContainer.classList.remove("hidden");
+      logCountBadge.textContent = `${data.logs.length} events`;
+      logsList.innerHTML = "";
+      data.logs.forEach((item) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.style.padding = "4px 6px";
+        itemDiv.style.borderRadius = "4px";
+        itemDiv.style.backgroundColor = "#f8fafc";
+        itemDiv.style.border = "1px solid #e2e8f0";
+        itemDiv.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="color:#0f172a;">${escapeHtml(item.action)}</strong>
+            <span style="font-size:9px; color:#64748b; font-weight:600;">${escapeHtml(item.category)}</span>
+          </div>
+          <div style="color:#334155; font-size:10px;">From: ${escapeHtml(item.sender)} | Subject: <em>${escapeHtml(item.subject)}</em></div>
+          <div style="color:#64748b; font-size:10px;">${escapeHtml(item.details)}</div>
+        `;
+        logsList.appendChild(itemDiv);
+      });
+    } else {
+      logsContainer.classList.add("hidden");
+    }
 
     resultsCard.classList.remove("hidden");
     btnDownload.disabled = false;

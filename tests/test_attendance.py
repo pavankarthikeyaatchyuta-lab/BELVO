@@ -272,6 +272,30 @@ class TestAttendanceEngine:
         assert stats["absent_count"] == 0
         assert stats["total_employees"] == 2
 
+    def test_fuzzy_work_report_parsing(self):
+        """Flexible parsing in Gmail mode accepts 'Work report - details' and infers date."""
+        msg = EmailMessage(
+            id="101",
+            sender="Mayuri Mamindla <mayuri@gmail.com>",
+            subject="work report - I have gathered the required details",
+            received_at="2026-09-25T14:30:00+05:30",
+        )
+        engine = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=True,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance([msg], "2026-09-25")
+
+        assert len(records) == 1
+        assert records[0].person == "Mayuri Mamindla"
+        assert records[0].email == "mayuri@gmail.com"
+        assert records[0].status == AttendanceStatus.PRESENT
+        assert stats["present_count"] == 1
+        assert stats["valid_reports"] == 1
+
 
 class TestExcelWriter:
     """Tests for Excel workbook generation."""

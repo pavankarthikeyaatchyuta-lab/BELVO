@@ -4,6 +4,7 @@ Email parser and deterministic subject matching engine for Belvo Attendance Trac
 
 from datetime import datetime
 from email.utils import parseaddr
+import re
 from typing import Optional, Tuple
 from app.config import WORK_REPORT_SUBJECT_REGEX, DATE_FORMAT
 from app.models import EmailMessage, ParsedReport, LogCategory
@@ -83,7 +84,21 @@ def is_late_submission(received_at_iso: Optional[str], work_date_str: str) -> bo
         return False
 
 
-def parse_work_report(message: EmailMessage, target_date: str) -> ParsedReport:
+# Additional regexes for flexible / live work report parsing
+FUZZY_WORK_REPORT_KEYWORD_REGEX = re.compile(
+    r"\b(?:daily\s+)?work\s+report\b|\bdaily\s+report\b|\bwork\s+status\b|\bstatus\s+report\b",
+    re.IGNORECASE,
+)
+DATE_IN_TEXT_REGEX = re.compile(
+    r"\b(\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4})\b"
+)
+
+
+def parse_work_report(
+    message: EmailMessage,
+    target_date: str,
+    allow_fuzzy: bool = False,
+) -> ParsedReport:
     """
     Deterministically evaluates an email message against work report rules.
     - Normalizes sender
@@ -91,6 +106,7 @@ def parse_work_report(message: EmailMessage, target_date: str) -> ParsedReport:
     - Evaluates subject with regex
     - Validates embedded work date
     - Flags late reports without rejecting valid work date
+    - In allow_fuzzy mode, tolerates natural subject variations and infers date from timestamp if missing
     """
     normalized_sender = extract_clean_email(message.sender)
     subject = (message.subject or "").strip()
@@ -108,37 +124,64 @@ def parse_work_report(message: EmailMessage, target_date: str) -> ParsedReport:
 
     # Case 2: Subject regex matching
     match = WORK_REPORT_SUBJECT_REGEX.match(subject)
-    if not match:
-        return ParsedReport(
-            raw_message=message,
-            is_valid=False,
-            normalized_sender_email=normalized_sender,
-            extracted_date=None,
-            category=LogCategory.MALFORMED_SUBJECT,
-            notes=f"Subject '{subject}' does not match pattern 'Daily Work Report - YYYY-MM-DD'."
-        )
+    if match:
+        extracted_date = match.group(1)
+        if validate_date_string(extracted_date):
+            is_late = is_late_submission(message.received_at, extracted_date)
+            category = LogCategory.LATE_REPORT if is_late else LogCategory.VALID_REPORT
+            notes = "Late report submitted after work date." if is_late else "Valid work report."
+            return ParsedReport(
+                raw_message=message,
+                is_valid=True,
+                normalized_sender_email=normalized_sender,
+                extracted_date=extracted_date,
+                category=category,
+                notes=notes
+            )
+        else:
+            return ParsedReport(
+                raw_message=message,
+                is_valid=False,
+                normalized_sender_email=normalized_sender,
+                extracted_date=extracted_date,
+                category=LogCategory.MALFORMED_SUBJECT,
+                notes=f"Extracted date '{extracted_date}' is not a valid calendar date."
+            )
 
-    extracted_date = match.group(1)
-    if not validate_date_string(extracted_date):
-        return ParsedReport(
-            raw_message=message,
-            is_valid=False,
-            normalized_sender_email=normalized_sender,
-            extracted_date=extracted_date,
-            category=LogCategory.MALFORMED_SUBJECT,
-            notes=f"Extracted date '{extracted_date}' is not a valid calendar date."
-        )
+    # Case 3: Flexible parsing (used in live Gmail mode)
+    if allow_fuzzy and FUZZY_WORK_REPORT_KEYWORD_REGEX.search(subject):
+        extracted_date = None
+        date_match = DATE_IN_TEXT_REGEX.search(subject)
+        if date_match:
+            extracted_date = normalize_and_validate_date(date_match.group(1))
 
-    # Check if this matches the target attendance date
-    is_late = is_late_submission(message.received_at, extracted_date)
-    category = LogCategory.LATE_REPORT if is_late else LogCategory.VALID_REPORT
-    notes = "Late report submitted after work date." if is_late else "Valid work report."
+        # If no date in subject, infer from message.received_at
+        if not extracted_date and message.received_at:
+            try:
+                clean_iso = message.received_at.replace("Z", "+00:00")
+                recv_dt = datetime.fromisoformat(clean_iso)
+                extracted_date = recv_dt.strftime(DATE_FORMAT)
+            except Exception:
+                extracted_date = None
+
+        if extracted_date and validate_date_string(extracted_date):
+            is_late = is_late_submission(message.received_at, extracted_date)
+            category = LogCategory.LATE_REPORT if is_late else LogCategory.VALID_REPORT
+            notes = f"Accepted work report (date: {extracted_date})."
+            return ParsedReport(
+                raw_message=message,
+                is_valid=True,
+                normalized_sender_email=normalized_sender,
+                extracted_date=extracted_date,
+                category=category,
+                notes=notes
+            )
 
     return ParsedReport(
         raw_message=message,
-        is_valid=True,
+        is_valid=False,
         normalized_sender_email=normalized_sender,
-        extracted_date=extracted_date,
-        category=category,
-        notes=notes
+        extracted_date=None,
+        category=LogCategory.MALFORMED_SUBJECT,
+        notes=f"Subject '{subject}' does not match pattern 'Daily Work Report - YYYY-MM-DD'."
     )
