@@ -320,6 +320,75 @@ class TestAttendanceEngine:
         assert stats["leave_count"] == 1
         assert stats["present_count"] == 0
 
+    def test_leave_and_work_report_from_same_person_precedence(self):
+        """When an employee submits both a leave notice and a work report, leave takes strict precedence (L > P)."""
+        msg_leave = EmailMessage(
+            id="msg-1",
+            sender="Atchyuta Pavan Kart. <pavan@gmail.com>",
+            subject="Leave for today - hi, i am unable to attend meeting today",
+            received_at="2026-09-25T20:38:00+05:30",
+        )
+        msg_work = EmailMessage(
+            id="msg-2",
+            sender="Atchyuta Pavan Kart. <pavan@gmail.com>",
+            subject="Today my work report",
+            received_at="2026-09-25T20:43:00+05:30",
+        )
+        engine = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=True,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance([msg_leave, msg_work], "2026-09-25")
+
+        assert len(records) == 1
+        assert records[0].email == "pavan@gmail.com"
+        assert records[0].status == AttendanceStatus.LEAVE
+        assert "overridden by leave precedence" in records[0].notes
+        assert stats["leave_count"] == 1
+        assert stats["present_count"] == 0
+
+    def test_leave_subjects_and_fuzzy_work_variations(self):
+        """Verify natural variations for leave (absent, permission, ooo) and work reports (tasks completed, daily update)."""
+        messages = [
+            EmailMessage(
+                id="m1",
+                sender="Employee A <a@test.com>",
+                subject="Taking casual leave today",
+                received_at="2026-09-25T09:00:00+05:30",
+            ),
+            EmailMessage(
+                id="m2",
+                sender="Employee B <b@test.com>",
+                subject="Absent today due to health issues",
+                received_at="2026-09-25T09:15:00+05:30",
+            ),
+            EmailMessage(
+                id="m3",
+                sender="Employee C <c@test.com>",
+                subject="Daily update - tasks completed",
+                received_at="2026-09-25T18:00:00+05:30",
+            ),
+        ]
+        engine = AttendanceEngine(
+            employees=[],
+            leave_entries=[],
+            auto_discover=True,
+            only_present_and_leave=True,
+            allow_fuzzy=True,
+        )
+        records, logs, stats = engine.process_attendance(messages, "2026-09-25")
+
+        status_by_email = {r.email: r.status for r in records}
+        assert status_by_email["a@test.com"] == AttendanceStatus.LEAVE
+        assert status_by_email["b@test.com"] == AttendanceStatus.LEAVE
+        assert status_by_email["c@test.com"] == AttendanceStatus.PRESENT
+        assert stats["leave_count"] == 2
+        assert stats["present_count"] == 1
+
+
 
 class TestExcelWriter:
     """Tests for Excel workbook generation."""

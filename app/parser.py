@@ -86,11 +86,22 @@ def is_late_submission(received_at_iso: Optional[str], work_date_str: str) -> bo
 
 # Additional regexes for flexible / live work report parsing
 FUZZY_WORK_REPORT_KEYWORD_REGEX = re.compile(
-    r"\b(?:daily\s+)?work\s+(?:report|submission|update|status|task)\b|\b(?:daily|today|my)\s+(?:daily\s+)?(?:work\s+)?(?:report|task)\b|\b(?:task|work)\s+(?:was\s+)?completed\b|\bwork\s+report\b|\bdaily\s+report\b|\bwork\s+submission\b",
+    r"\b(?:daily\s+)?work\s+(?:report|submission|update|status|task|summary|done|completed)\b|"
+    r"\b(?:daily|today|my|today's)\s+(?:daily\s+)?(?:work\s+)?(?:report|task|tasks|update|submission|status|summary)\b|"
+    r"\b(?:task|tasks|work)\s+(?:was\s+|is\s+|are\s+)?(?:completed|done|finished|submitted)\b|"
+    r"\bwork\s+report\b|\bdaily\s+report\b|\bwork\s+submission\b|\bstatus\s+report\b|\bprogress\s+report\b|"
+    r"\bdaily\s+update\b|\bwork\s+update\b|\bstatus\s+update\b|\btask\s+update\b",
     re.IGNORECASE,
 )
 LEAVE_SUBJECT_REGEX = re.compile(
-    r"\b(?:on\s+)?leave\b|\bsick\s+leave\b|\bcasual\s+leave\b|\bapplying\s+for\s+leave\b|\bleave\s+application\b|\bleave\s+request\b",
+    r"\b(?:on\s+|taking\s+|applying\s+for\s+)?leave\b|"
+    r"\bleave\s+(?:application|request|notice|for\s+today|today|day)\b|"
+    r"\b(?:sick|casual|emergency|annual|planned)\s+leave\b|"
+    r"\babsent\b|"
+    r"\b(?:day\s+off|out\s+of\s+office|\booo\b)\b|"
+    r"\b(?:unable\s+to|cannot|can't|not)\s+attend\b|"
+    r"\bpermission(?:\s+for\s+today)?\b|"
+    r"\bnot\s+(?:available|coming|well)\b",
     re.IGNORECASE,
 )
 DATE_IN_TEXT_REGEX = re.compile(
@@ -163,7 +174,14 @@ def parse_work_report(
             try:
                 clean_iso = message.received_at.replace("Z", "+00:00")
                 recv_dt = datetime.fromisoformat(clean_iso)
-                extracted_date = recv_dt.strftime(DATE_FORMAT)
+                try:
+                    target_dt = datetime.strptime(target_date, DATE_FORMAT)
+                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                        extracted_date = target_date
+                    else:
+                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                except Exception:
+                    extracted_date = recv_dt.strftime(DATE_FORMAT)
             except Exception:
                 extracted_date = None
 
@@ -188,16 +206,26 @@ def parse_work_report(
         if date_match:
             extracted_date = normalize_and_validate_date(date_match.group(1))
 
-        # If no date in subject, infer from message.received_at
+        # If no date in subject, infer from message.received_at or target_date
         if not extracted_date and message.received_at:
             try:
                 clean_iso = message.received_at.replace("Z", "+00:00")
                 recv_dt = datetime.fromisoformat(clean_iso)
-                extracted_date = recv_dt.strftime(DATE_FORMAT)
+                try:
+                    target_dt = datetime.strptime(target_date, DATE_FORMAT)
+                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                        extracted_date = target_date
+                    else:
+                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                except Exception:
+                    extracted_date = recv_dt.strftime(DATE_FORMAT)
             except Exception:
                 extracted_date = None
 
-        if extracted_date and validate_date_string(extracted_date):
+        if not extracted_date:
+            extracted_date = target_date
+
+        if validate_date_string(extracted_date):
             is_late = is_late_submission(message.received_at, extracted_date)
             category = LogCategory.LATE_REPORT if is_late else LogCategory.VALID_REPORT
             notes = f"Accepted work report (date: {extracted_date})."
