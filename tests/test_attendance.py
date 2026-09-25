@@ -108,6 +108,45 @@ class TestAttendanceEngine:
         assert stats["present_count"] == 1
         assert stats["absent_count"] == 4
 
+    def test_date_filtering_does_not_mix_dates(self):
+        """Verifies that an email sent on 2026-09-25 is NOT counted when querying 2026-09-24."""
+        msg_sept25 = EmailMessage(
+            id="msg-25",
+            sender="Pavan <pavan@belvo.com>",
+            subject="Today my work report",
+            received_at="2026-09-25T20:43:00+05:30",
+        )
+        roster = [Employee(name="Pavan", email="pavan@belvo.com")]
+
+        # Querying for 2026-09-24 (yesterday):
+        engine_sept24 = AttendanceEngine(
+            employees=roster,
+            leave_entries=[],
+            auto_discover=False,
+            only_present_and_leave=False,
+            allow_fuzzy=True,
+        )
+        records_24, logs_24, stats_24 = engine_sept24.process_attendance([msg_sept25], "2026-09-24")
+
+        # Pavan did not send an email for Sept 24, so Pavan must be ABSENT on Sept 24
+        assert records_24[0].status == AttendanceStatus.ABSENT
+        assert stats_24["present_count"] == 0
+        assert stats_24["absent_count"] == 1
+        assert stats_24["date_mismatches"] == 1
+
+        # Querying for 2026-09-25 (matching date):
+        engine_sept25 = AttendanceEngine(
+            employees=roster,
+            leave_entries=[],
+            auto_discover=False,
+            only_present_and_leave=False,
+            allow_fuzzy=True,
+        )
+        records_25, logs_25, stats_25 = engine_sept25.process_attendance([msg_sept25], "2026-09-25")
+        assert records_25[0].status == AttendanceStatus.PRESENT
+        assert stats_25["present_count"] == 1
+        assert stats_25["absent_count"] == 0
+
     def test_absent(self, sample_employees):
         engine = AttendanceEngine(employees=sample_employees, leave_entries=[])
         records, logs, stats = engine.process_attendance([], "2026-09-17")

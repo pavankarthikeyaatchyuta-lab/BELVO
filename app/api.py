@@ -426,6 +426,8 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
     allow_fuzzy = (req.mode == "gmail")
     for msg in raw_messages:
         parsed = parse_work_report(msg, req.date, allow_fuzzy=allow_fuzzy)
+        if req.mode == "gmail" and parsed.extracted_date and parsed.extracted_date != req.date:
+            continue
         parsed_items.append({
             "id": msg.id,
             "sender": msg.sender,
@@ -442,7 +444,7 @@ def scan_work_reports(req: ScanRequest, authorization: Optional[str] = Header(No
     return {
         "date": req.date,
         "mode": req.mode,
-        "total_found": len(raw_messages),
+        "total_found": len(parsed_items) if req.mode == "gmail" else len(raw_messages),
         "messages": parsed_items,
     }
 

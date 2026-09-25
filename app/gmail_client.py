@@ -144,8 +144,7 @@ class GmailProvider(EmailProvider):
         """
         service = self._get_service()
 
-        # Build date query window (target_date - 2 days to target_date + 3 days)
-        # Search for all attendance-related emails: work reports, submissions, tasks, updates, and leave notices
+        # Build date query window strictly around target_date (accounting for timezone offsets)
         attendance_terms = (
             "subject:report OR subject:submission OR subject:task OR subject:work OR "
             "subject:leave OR subject:absent OR subject:sick OR subject:casual OR "
@@ -154,8 +153,8 @@ class GmailProvider(EmailProvider):
         )
         try:
             target_dt = datetime.strptime(target_date, DATE_FORMAT)
-            after_date = (target_dt - timedelta(days=2)).strftime("%Y/%m/%d")
-            before_date = (target_dt + timedelta(days=3)).strftime("%Y/%m/%d")
+            after_date = (target_dt - timedelta(days=1)).strftime("%Y/%m/%d")
+            before_date = (target_dt + timedelta(days=2)).strftime("%Y/%m/%d")
             query = f'({attendance_terms}) after:{after_date} before:{before_date}'
         except Exception:
             query = attendance_terms
@@ -166,8 +165,7 @@ class GmailProvider(EmailProvider):
             results = service.users().messages().list(userId="me", q=query, maxResults=100).execute()
             messages_meta = results.get("messages", [])
 
-            # Fallback 1: If 0 messages found in keyword query, query all non-system emails in the date window
-            # to catch unconventional subjects without missing legitimate employee submissions
+            # Fallback: If 0 messages found in keyword query, check for non-system emails in the same target date window
             if not messages_meta and "after_date" in locals() and "before_date" in locals():
                 fallback_window_query = f'after:{after_date} before:{before_date} -from:no-reply -from:google.com'
                 logger.info(f"0 messages found with keyword query. Trying date window query: {fallback_window_query}")
@@ -176,13 +174,6 @@ class GmailProvider(EmailProvider):
                     messages_meta = fallback_results.get("messages", [])
                 except Exception as e:
                     logger.warning(f"Fallback date window query failed: {e}")
-
-            # Fallback 2: If still 0 messages, query the most recent work/leave emails across all dates
-            if not messages_meta:
-                fallback_query = attendance_terms
-                logger.info(f"0 messages found with date window. Querying fallback across all dates: {fallback_query}")
-                fallback_results = service.users().messages().list(userId="me", q=fallback_query, maxResults=50).execute()
-                messages_meta = fallback_results.get("messages", [])
         except Exception as e:
             logger.error(f"Failed to list messages from Gmail: {e}")
             raise

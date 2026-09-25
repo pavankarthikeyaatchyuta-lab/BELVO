@@ -177,14 +177,17 @@ def parse_work_report(
             try:
                 clean_iso = message.received_at.replace("Z", "+00:00")
                 recv_dt = datetime.fromisoformat(clean_iso)
+                recv_date = recv_dt.strftime(DATE_FORMAT)
                 try:
                     target_dt = datetime.strptime(target_date, DATE_FORMAT)
-                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                    if recv_date == target_date:
+                        extracted_date = target_date
+                    elif (recv_dt.date() - target_dt.date()).days == 1 and recv_dt.hour < 4:
                         extracted_date = target_date
                     else:
-                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                        extracted_date = recv_date
                 except Exception:
-                    extracted_date = recv_dt.strftime(DATE_FORMAT)
+                    extracted_date = recv_date
             except Exception:
                 extracted_date = None
 
@@ -213,14 +216,17 @@ def parse_work_report(
             try:
                 clean_iso = message.received_at.replace("Z", "+00:00")
                 recv_dt = datetime.fromisoformat(clean_iso)
+                recv_date = recv_dt.strftime(DATE_FORMAT)
                 try:
                     target_dt = datetime.strptime(target_date, DATE_FORMAT)
-                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                    if recv_date == target_date:
+                        extracted_date = target_date
+                    elif (recv_dt.date() - target_dt.date()).days == 1 and recv_dt.hour < 4:
                         extracted_date = target_date
                     else:
-                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                        extracted_date = recv_date
                 except Exception:
-                    extracted_date = recv_dt.strftime(DATE_FORMAT)
+                    extracted_date = recv_date
             except Exception:
                 extracted_date = None
 
@@ -238,7 +244,7 @@ def parse_work_report(
                 is_leave=True,
             )
 
-    # Case 4: Flexible work report parsing (used in live Gmail mode)
+    # Case 5: Flexible work report parsing (used in live Gmail mode)
     if allow_fuzzy and FUZZY_WORK_REPORT_KEYWORD_REGEX.search(subject):
         extracted_date = None
         date_match = DATE_IN_TEXT_REGEX.search(subject)
@@ -250,14 +256,17 @@ def parse_work_report(
             try:
                 clean_iso = message.received_at.replace("Z", "+00:00")
                 recv_dt = datetime.fromisoformat(clean_iso)
+                recv_date = recv_dt.strftime(DATE_FORMAT)
                 try:
                     target_dt = datetime.strptime(target_date, DATE_FORMAT)
-                    if abs((recv_dt.date() - target_dt.date()).days) <= 1:
+                    if recv_date == target_date:
+                        extracted_date = target_date
+                    elif (recv_dt.date() - target_dt.date()).days == 1 and recv_dt.hour < 4:
                         extracted_date = target_date
                     else:
-                        extracted_date = recv_dt.strftime(DATE_FORMAT)
+                        extracted_date = recv_date
                 except Exception:
-                    extracted_date = recv_dt.strftime(DATE_FORMAT)
+                    extracted_date = recv_date
             except Exception:
                 extracted_date = None
 
